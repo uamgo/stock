@@ -66,12 +66,37 @@ class StockA:
             #print(rev_day_df)
             return True
         return False
+
+
+    def rm_by_max(self, rev_min_df):
+        # if max green > max_read*0.9
+        max_up = 0
+        max_down = 0
+        cnt = 0
+        for i in rev_min_df.index:
+           cnt += 1
+           if cnt > 300:
+                break
+           q = rev_min_df['成交量'][i] 
+           open_price = rev_min_df['开盘'][i] 
+           close_price = rev_min_df['收盘'][i] 
+           if open_price > close_price:
+                max_down = max(max_down, q)
+           elif open_price < close_price:
+                max_up = max(max_up, q)
+        if max_down > 0.8*max_up:
+            return False
+                
+        return True
+
     
     
     def filter_by_min(self, code):
         # 注意：该接口返回的数据只有最近一个交易日的有开盘价，其他日期开盘价为 0
         min_df = ak.stock_zh_a_hist_min_em(symbol=code, start_date="2021-09-01 09:32:00", end_date="2025-09-06 09:32:00", period='1', adjust='')
         rev_min_df = min_df.reindex(index=min_df.index[::-1])
+        if not self.rm_by_max(rev_min_df):
+            return False
         #print(rev_min_df)
         nums = 0
         avg = 0
@@ -121,6 +146,7 @@ class StockA:
         stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
         #not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称'] and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
         n = 0
+        rs = list()
         for i in stock_zh_a_spot_em_df.index:
             if i%500 ==0:
                 print(f"i={i}")
@@ -140,12 +166,22 @@ class StockA:
                 n += 1
                 shi_val = stock_zh_a_spot_em_df['市盈率-动态'][i]
                 total_val = stock_zh_a_spot_em_df['总市值'][i]
+                row = dict()
+                row['code']=code
+                row['name']=name
+                row['shi_val']=shi_val
+                row['total_val']=total_val
+                row['flow_val']=flow_val
+                rs.append(row)
                 print(f'{str(n)}, code={code}, name={name}, 市盈率-动态={shi_val}, 总市值={total_val}, 流通市值={flow_val}')
                 print('-------------------\n')
                 if n>=100:
                     break
+        return rs
 
 
 if __name__ == "__main__":
     stock = StockA()
-    stock.run()
+    rs = stock.run()
+    for idx,row in enumerate(rs):
+        print(f"{str(idx)}, code={row['code']}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
