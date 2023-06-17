@@ -1,10 +1,14 @@
+from threading import Lock, Thread, current_thread
+
 import akshare as ak
 import time
 import datetime
 
 
 class StockA:
-    black_list = list('600865')
+    black_list = ['600865']
+    rs = list()
+    lock = Lock()
 
     def filter_by_week(self, code, week_delta):
         day_delta = week_delta * 10
@@ -141,15 +145,47 @@ class StockA:
         strTime = threeDayAgo.strftime("%Y%m%d")
         return strTime
 
+    def append_all(self, thread_rs):
+        self.lock.acquire()
+        try:
+            self.rs.extend(thread_rs)
+        finally:
+            self.lock.release()
+
+    def run_thread_check(self, codes):
+        thread_rs = list()
+        thx_name = current_thread().getName()
+        code_len = len(codes)
+        print(f"[{thx_name}] total len: {code_len}")
+        n = 0
+        for row in codes:
+            code = row['code']
+            n += 1
+            if n % 100 == 0:
+                print(f"[{thx_name}] finished {n}/{code_len}")
+            # print(code)
+            if self.filter_by_day(code, 5) and self.filter_by_min(code):
+                thread_rs.append(row)
+                print(f'{row}')
+                print('-------------------\n')
+        print(f"[{thx_name}] finished all: {code_len}")
+        if len(thread_rs) > 0:
+            self.append_all(thread_rs)
+
     def run(self):
         stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
+        stock_df_len = len(stock_zh_a_spot_em_df)
+        print(f"Total stocks: {stock_df_len}")
         # not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称'] and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
+        thread_data_dict = dict()
+        thread_dict = dict()
+        for i in range(1, 50):
+            thread_data_dict[i] = list()
+        batch_num = 1
         n = 0
-        rs = list()
         for i in stock_zh_a_spot_em_df.index:
-            if i % 500 == 0:
-                print(f"i={i}")
             code = stock_zh_a_spot_em_df['代码'][i]
+            n += 1
             if code in self.black_list:
                 continue
             name = stock_zh_a_spot_em_df['名称'][i]
@@ -167,27 +203,38 @@ class StockA:
 
             if code.startswith("688"):
                 continue
-            if self.filter_by_day(code, 5) and self.filter_by_min(code):
-                n += 1
-                shi_val = stock_zh_a_spot_em_df['市盈率-动态'][i]
-                total_val = stock_zh_a_spot_em_df['总市值'][i]
-                row = dict()
-                row['code'] = code
-                row['name'] = name
-                row['shi_val'] = shi_val
-                row['total_val'] = total_val
-                row['flow_val'] = flow_val
-                rs.append(row)
-                print(f'{str(n)}, code={code}, name={name}, 市盈率-动态={shi_val}, 总市值={total_val}, 流通市值={flow_val}')
-                print('-------------------\n')
-                if n >= 100:
-                    break
-        return rs
+            shi_val = stock_zh_a_spot_em_df['市盈率-动态'][i]
+            total_val = stock_zh_a_spot_em_df['总市值'][i]
+            row = dict()
+            row['code'] = code
+            row['name'] = name
+            row['shi_val'] = shi_val
+            row['total_val'] = total_val
+            row['flow_val'] = flow_val
+            thread_data_dict[batch_num].append(row)
+            rape_list = list()
+            rape_list.append(thread_data_dict[batch_num])
+            if len(thread_data_dict[batch_num]) >= 200:
+                thread_dict[batch_num] = Thread(target=self.run_thread_check, args=rape_list, name=batch_num,
+                                                daemon=True)
+                thread_dict[batch_num].start()
+                print(f"Valid stock code: {batch_num*200}/{n}")
+                batch_num += 1
+
+        if len(thread_data_dict[batch_num]) > 0:
+            thread_dict[batch_num] = Thread(target=self.run_thread_check, args=rape_list, name=batch_num, daemon=True)
+            thread_dict[batch_num].start()
+
+        for k in thread_dict:
+            thread_dict[k].join(timeout=3600000)
+            print(f"{k} finished! ")
+        return self.rs
 
 
 if __name__ == "__main__":
     stock = StockA()
     rs = stock.run()
+    rs.sort(key=lambda r: r['code'])
     for idx, row in enumerate(rs):
         print(
             f"{str(idx)}, code={row['code']}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
