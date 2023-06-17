@@ -214,11 +214,11 @@ class StockA:
             thread_data_dict[batch_num].append(row)
             rape_list = list()
             rape_list.append(thread_data_dict[batch_num])
-            if len(thread_data_dict[batch_num]) >= 200:
+            if len(thread_data_dict[batch_num]) >= 100:
                 thread_dict[batch_num] = Thread(target=self.run_thread_check, args=rape_list, name=batch_num,
                                                 daemon=True)
                 thread_dict[batch_num].start()
-                print(f"Valid stock code: {batch_num*200}/{n}")
+                print(f"Valid stock code: {batch_num*100}/{n}")
                 batch_num += 1
 
         if len(thread_data_dict[batch_num]) > 0:
@@ -227,14 +227,18 @@ class StockA:
 
         for k in thread_dict:
             thread_dict[k].join(timeout=3600000)
-            print(f"{k} finished! ")
+            print(f"Thread {k} done! ---")
         return self.rs
 
 
 if __name__ == "__main__":
+    start_ts = time.time()
     stock = StockA()
     rs = stock.run()
     rs.sort(key=lambda r: r['code'])
+    end_ts = time.time()
+
     for idx, row in enumerate(rs):
         print(
             f"{str(idx)}, code={row['code']}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
+    print("Elapse: %.2f s" % (end_ts - start_ts))
