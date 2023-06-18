@@ -142,6 +142,7 @@ class StockA:
         return strTime
 
     def run(self):
+        s = time.time()
         stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
         # not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称'] and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
         n = 0
@@ -182,6 +183,8 @@ class StockA:
                 print('-------------------\n')
                 if n >= 100:
                     break
+        e = "%.2f" % (time.time()-s)
+        print(f"Elapse: {e}s")
         return rs
 
 
