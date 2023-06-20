@@ -12,10 +12,23 @@ def text_reply(msg):
         rs = stock.run()
         rs.sort(key=lambda r: r['code'])
         end_ts = time.time()
+        msg.user.send('收到，正在安排...')
 
         for idx, row in enumerate(rs):
+            code = row['code']
+            code_type = ""
+            if code.startswith('30') or code.startswith('00'):
+                code_type = '0.'
+            elif code.startswith('60'):
+                code_type = '1.'
+            else:
+                code_type='no_found'
             msg.user.send(
-                f"{str(idx+1)}, code={row['code']}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
+                f"""{str(idx+1)}, code={row['code']}, 
+                name={row['name']}\n市盈率-动态={row['shi_val']}
+                \n总市值={row['total_val']}\n流通市值={row['flow_val']}
+                \n https://wap.eastmoney.com/quote/stock/{code_type}{code}.html?appfenxiang=1
+                """)
         msg.user.send(
             "\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
 
