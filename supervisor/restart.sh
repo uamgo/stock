@@ -1,3 +1,4 @@
 #!/bin/sh
-supervisorctl stop all
-supervisorctl restart all
+sudo supervisorctl update 
+sudo supervisorctl stop all
+sudo supervisorctl restart all
