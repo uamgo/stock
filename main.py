@@ -178,6 +178,16 @@ class StockA:
             print(f"[{thx_name}] finished all: {code_len}, elapse: {e_ts} ({s_date}  ~  {e_date})")
             self.append_all(thread_rs)
 
+    def to_link(self, code):
+        code_type = ""
+        if code.startswith('30') or code.startswith('00'):
+            code_type = '0.'
+        elif code.startswith('60'):
+            code_type = '1.'
+        else:
+            code_type = 'no_found'
+        return f"https://wap.eastmoney.com/quote/stock/{code_type}{code}.html?appfenxiang=1"
+
     def run(self):
         s_ts = time.time()
         stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
@@ -254,6 +264,8 @@ if __name__ == "__main__":
 
     print("\n~~~~~~~~~~~\n")
     for idx, row in enumerate(rs):
+        code = row['code']
         print(
-            f"{str(idx+1)}, code={row['code']}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
+            f"{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}")
+        print(stock.to_link(code))
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))

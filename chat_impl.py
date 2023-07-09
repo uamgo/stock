@@ -1,5 +1,7 @@
 import itchat, time
 from itchat.content import *
+from chinese_calendar import is_workday
+import schedule
 
 from main import StockA
 
@@ -22,7 +24,7 @@ def text_reply(msg):
             elif code.startswith('60'):
                 code_type = '1.'
             else:
-                code_type='no_found'
+                code_type = 'no_found'
             msg.user.send(
                 f"""{str(idx+1)}, code={row['code']}, 
                 name={row['name']}\n市盈率-动态={row['shi_val']}
@@ -61,4 +63,17 @@ def text_reply(msg):
 # picture version
 # itchat.auto_login(True)
 itchat.auto_login(enableCmdQR=2)
+
+
+def job_function():
+    friends = itchat.get_friends()
+    itchat.auto_login(hotReload=True)
+
+    for i in friends:
+        remark_name = i['RemarkName']
+        itchat.send('开玩笑的，我并没有1000万', toUserName=remark_name)
+
+
+schedule.every().day.at("9:00").at("")
+
 itchat.run(True)
