@@ -163,7 +163,8 @@ class StockA:
     def run(self):
         # 获取所有概念板块，判断板块涨幅排名前20
         stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
-        stock_board_concept_name_em_df = stock_board_concept_name_em_df.nlargest(10,'涨跌幅',keep='last')
+        stock_board_concept_name_em_df = stock_board_concept_name_em_df.nlargest(10,'涨跌幅',keep='first')
+        #stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
         print(stock_board_concept_name_em_df)
         stock_df = None
         for ind in stock_board_concept_name_em_df.index:
@@ -271,6 +272,6 @@ if __name__ == "__main__":
     for idx, row in enumerate(rs):
         code = row['code']#
         print(
-            f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, 总市值={row['total_val']}, 流通市值={row['flow_val']}, 涨跌幅={row['zhang']}""")
+            f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, 成交量={row['total_val']}, 成交额={row['flow_val']}, 涨跌幅={row['zhang']}""")
         print(stock.to_link(code))
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
