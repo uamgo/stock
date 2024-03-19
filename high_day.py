@@ -167,7 +167,7 @@ class StockA:
         stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
         stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
         #stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
-        print(stock_board_concept_name_em_df)
+        print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
         stock_df = None
         for ind in stock_board_concept_name_em_df.index:
             concept_name = stock_board_concept_name_em_df["板块名称"][ind]
@@ -179,17 +179,16 @@ class StockA:
             if stock_df is None:
                 stock_df = concept_tmp_df
             else:
-                print(f"Covered stocks: {stock_df.size} with concept_tmp_df: {concept_tmp_df.size}")
+                print(f"Covered stocks: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
                 stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
 
         # stock_df = stock_df.drop_duplicates(subset=[''])
         # stock_df = stock_df.drop_duplicates(subset=['代码', '名称', '涨跌幅', '市盈率-动态', '成交量', '成交额'], keep='first')
         stock_df = stock_df.drop_duplicates(subset=['代码'], keep='first')
-        print(f"Covered stocks: {stock_df.size}")
+        print(f"Covered stocks: {len(stock_df['代码'])}")
         s_ts = time.time()
         # stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
         stock_zh_a_spot_em_df = stock_df 
-        print(stock_zh_a_spot_em_df)
         # not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称']
         # and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
         thread_data_dict = dict()
