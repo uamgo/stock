@@ -164,7 +164,7 @@ class StockA:
         # 获取所有概念板块，判断板块涨幅排名前20
         stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
         stock_top = stock_board_concept_name_em_df.nlargest(10,'涨跌幅',keep='first')
-        stock_bottom = stock_board_concept_name_em_df.nlargest(10,'涨跌幅',keep='first')
+        stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
         stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
         #stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
         print(stock_board_concept_name_em_df)
