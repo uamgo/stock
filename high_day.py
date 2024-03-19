@@ -167,6 +167,7 @@ class StockA:
         stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
         stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
         #stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
+        print(stock_board_concept_name_em_df)
         print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
         stock_df = None
         for ind in stock_board_concept_name_em_df.index:
