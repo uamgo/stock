@@ -174,13 +174,14 @@ class StockA:
             concept_name = stock_board_concept_name_em_df["板块名称"][ind]
             # 找到所有符合条件的概念股并去重
             concept_tmp_df = ak.stock_board_concept_cons_em(symbol = concept_name)
-            if concept_tmp_df.size > 1000:
-                print(f"Ignore concept: {concept_name}")
+            concept_tmp_len = len(concept_tmp_df["代码"])
+            if concept_tmp_len > 1000:
+                print(f"Ignore concept: {concept_name} with size: {concept_tmp_len}")
                 continue
             if stock_df is None:
                 stock_df = concept_tmp_df
             else:
-                print(f"Covered stocks: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
+                print(f"Covered  {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
                 stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
 
         # stock_df = stock_df.drop_duplicates(subset=[''])
