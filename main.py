@@ -156,7 +156,7 @@ class StockA:
         s_ts = time.time()
         s_date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         thread_rs = list()
-        thx_name = current_thread().getName()
+        thx_name = current_thread().name
         code_len = len(codes)
         # print(f"[{thx_name}] total len: {code_len}")
         n = 0
