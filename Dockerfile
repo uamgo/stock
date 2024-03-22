@@ -3,6 +3,7 @@ RUN mkdir -p /app
 WORKDIR /app
 RUN echo 'alias ll="ls -ltr" >> ~/.bashrc'
 RUN git clone https://github.com/uamgo/stock.git
+WORKDIR /app/stock
 RUN pip3 install akshare
 #apt-get源 使用163的源
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
