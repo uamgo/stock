@@ -12,8 +12,13 @@ class StockA:
     rs = list()
     lock = Lock()
 
+    # 返回：list 包含 股票代码、策略类型、权重
+    # 策略类型：900 策略一，800 策略二，700 策略三
+    # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
-        filtered_code = '300321'
+        # 返回： 股票代码
+        row_code = [code, 0, 0]
+        policies = [900, 800, 700]
         # 获取前一日价格
         end = self.time_fmt(1)
         start = self.time_fmt(40)
@@ -122,24 +127,28 @@ class StockA:
         if day_df['trend_3'][last_1] >= 1:
             total_q < last_day_q * 1.5
             filter_flag = True
+            row[1] = policies[1]
+
         # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出逃
         if max_price > day_df['box_up'][last_1]:
-            if buy_q > sell_q:
+            if buy_q > sell_q or total_q < last_day_q * 1.5:
                 filter_flag = True
-            elif total_q < last_day_q * 1.5:
-                filter_flag = True
+                row[1] = policies[2]
 
         # policy 3: 一、连续三天创新低；二、放量资金抄底
         if day_df['trend_3'][last_1] <= -1:
             # 最大买单小于最大买单的50%；当前价格高于移动平均价；买单数量大约
             filter_flag = (max_s_q < max_b_q * 0.5 and price > avg and buy_q > sell_q and cnt_hight > cnt * 0.6)
+            if filter_flag:
+                row[1] = policies[3]
 
+        row_code[3] = row_code[2] + 100 - int(100 * abs(price - avg) / avg)
         if filter_flag:
             print(
                 f"{code} , max_s_q={max_s_q}, max_b_q={max_b_q}, cnt_hight={cnt_hight}, cnt={cnt}, total_q={total_q}, last_day_q={last_day_q}, price={price}, avg={avg}, last_day_shou={last_day_shou}")
-            return True
+            return row_code
 
-        return False
+        return None
 
     def avg_diff(self, a):
         a_1 = a.iloc[0]
@@ -192,7 +201,10 @@ class StockA:
             if n % 200 == 0:
                 now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 print(f"[{thx_name}] finished {n}/{code_len} with time: {now}")
-            if self.filter_by_min(code):
+            row_code = self.filter_by_min(code)
+            if row_code is not None
+                row['policy_type'] = row_code[1]
+                row['score'] = row_code[2]
                 thread_rs.append(row)
                 flag = True
                 print(f'[{thx_name}] {row}')
@@ -330,6 +342,6 @@ if __name__ == "__main__":
     for idx, row in enumerate(rs):
         code = row['code']#
         print(
-            f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, 成交量={row['total_val']}, 成交额={row['flow_val']}, 涨跌幅={row['zhang']}""")
+            f"""{str(idx+1)}, score={row['score']}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, 涨跌幅={row['zhang']}""")
         print(stock.to_link(code))
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
