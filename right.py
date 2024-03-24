@@ -35,8 +35,8 @@ class StockA:
         day_df['avg20'] = day_df['收盘'].rolling(20).mean()
         if day_df['avg20'][last_1] is None or last_day_shou < day_df['avg20'][last_1]:
             return False
-        day_df['avg'] = day_df.apply(lambda r: self.avg(r['开盘'], r['收盘']), axis=1)
-        day_df['trend_2'] = day_df['avg'].rolling(2).apply(lambda a, b: self.avg_diff(a, b), axis=1)
+        day_df['avg'] = day_df['开盘'].rolling(window=1).apply(self.avg, args=(day_df['收盘'],))
+        day_df['trend_2'] = day_df['avg'].rolling(2).apply(lambda a: self.avg_diff(a))
         if day_df['trend_2'][last_1] is None:
             print(f"last one in trend_2 is None!")
             return False
@@ -141,10 +141,13 @@ class StockA:
 
         return False
 
-    def avg_diff(self, a, b):
-        if a == b:
+    def avg_diff(self, a):
+        a_1 = a.iloc[0]
+        a_2 = a.iloc[1]
+        # print(f"a={a_1}, type={a_2}")
+        if a_1 == a_2:
             return 0
-        elif a > b:
+        elif a_1 > a_2:
             return 1
         else:
             return -1
@@ -152,7 +155,11 @@ class StockA:
     def avg(self, a, b):
         if a is None or b is None:
             return None
-        return (a+b)/2
+        # print(f"a={a}")
+        # print(f"a_1={type(a)}")
+        # print(f"b={b}")
+        # print(f"b2={b.iloc[a.index[0]]}")
+        return (a.iloc[0] + b.iloc[a.index[0]])/2
 
     def time_fmt(self, day_delta):
         # 先获得时间数组格式的日期
