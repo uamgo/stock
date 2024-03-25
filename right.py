@@ -9,6 +9,7 @@ import pandas as pd
 
 class StockA:
     black_list = ['600865']
+    policies = [900, 800, 700]
     rs = list()
     lock = Lock()
 
@@ -19,7 +20,6 @@ class StockA:
         debug_code = '0'
         # 返回： 股票代码
         row_code = [code, 0, 0]
-        policies = [900, 800, 700]
         # 获取前一日价格
         end = self.time_fmt(1)
         start = self.time_fmt(40)
@@ -90,11 +90,13 @@ class StockA:
         sell_q = 0
         is_valid = False
         max_price = 0
+        first_price = 0
 
         while i < size - 1:
             i += 1
             time_m = min_df["时间"][i]
             if not is_valid and time_m.startswith('09:30'):
+                first_price = min_df['成交价'][i]
                 is_valid = True
             if not is_valid:
                 continue
@@ -136,24 +138,29 @@ class StockA:
         filter_flag = False
         # policy 1: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
         if day_df['trend_3'][last_1] >= 1:
-            total_q < last_day_q * 1.5
-            filter_flag = True
-            row_code[1] = policies[0]
+            today_price_avg = (first_price + price) / 2
+            if total_q < last_day_q * 1.5 and today_price_avg > first_price:
+                filter_flag = True
+                row_code[1] = self.policies[0]
 
         # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出逃
         elif max_price > day_df['box_up'][last_1]:
             if buy_q > sell_q or total_q < last_day_q * 1.5:
                 filter_flag = True
-                row_code[1] = policies[1]
+                row_code[1] = self.policies[1]
 
         # policy 3: 一、连续三天创新低；二、放量资金抄底
         elif day_df['trend_3'][last_1] <= -1:
             # 最大买单小于最大买单的50%；当前价格高于移动平均价；买单数量大约
             filter_flag = (max_s_q < max_b_q * 0.5 and price > avg and buy_q > sell_q and cnt_hight > cnt * 0.6)
             if filter_flag:
-                row_code[1] = policies[2]
+                row_code[1] = self.policies[2]
 
-        row_code[2] = row_code[1] + (10000 - int(10000 * abs(price - avg) / avg)) / 100
+        x = 0
+        if row_code[1] == 800 or row_code[1] == 900:
+            x = 900
+
+        row_code[2] = x + (10000 - int(10000 * abs(price - avg) / avg)) / 100
         if filter_flag:
             print(
                 f"{code} , max_s_q={max_s_q}, max_b_q={max_b_q}, cnt_hight={cnt_hight}, cnt={cnt}, total_q={total_q}, last_day_q={last_day_q}, price={price}, avg={avg}, last_day_shou={last_day_shou}")
@@ -341,21 +348,47 @@ class StockA:
             # print(f"Thread {k} done! ---")
         return self.rs
 
+    def print_pocicy(self, p_list, policy_type):
+        print(f"\n~~~policy_type={policy_type} with {len(p_list)} stocks~~~")
+        if len(p_list) == 0:
+            print(f"No data for policy_type={policy_type}")
+            return False
+        for idx, row in enumerate(p_list):
+            code = row['code']
+            print(
+                f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, score={row['score']}, 涨跌幅={row['zhang']}""")
+            print(stock.to_link(code))
+            if idx >= 4:
+                print(f"\nTop 5 from {len(p_list)} stocks")
+                break
+        print("End~~~~~~~~~~~")
+        return True
+
 
 if __name__ == "__main__":
     start_ts = time.time()
     stock = StockA()
     rs = stock.run()
+    # print(f"rs type = {type(rs)}") 
     rs.sort(reverse=True, key=lambda r: r['score'])
+    print(rs)
+    print(f"\nTotal: {len(rs)} stocks")
+    p_1_list = []
+    p_2_list = []
+    p_3_list = []
+    for idx, row in enumerate(rs):
+        if row['policy_type'] == stock.policies[0]:
+            p_1_list.append(row)
+        elif row['policy_type'] == stock.policies[1]:
+            p_2_list.append(row)
+        else:
+            p_3_list.append(row)
+
     end_ts = time.time()
 
     print("\n~~~~~~~~~~~\n")
-    for idx, row in enumerate(rs):
-        code = row['code']#
-        print(
-            f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, score={row['score']}, 涨跌幅={row['zhang']}""")
-        print(stock.to_link(code))
-        if idx >= 9:
-            print(f"\nTop 10 from {len(rs)} stocks")
-            break
+    stock.print_pocicy(p_1_list, "策略一：连续上涨")
+    stock.print_pocicy(p_2_list, "策略二：箱体突破")
+    stock.print_pocicy(p_3_list, "策略三：连续下跌")
+
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
