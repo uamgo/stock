@@ -12,6 +12,7 @@ class StockA:
     policies = [900, 800, 700]
     rs = list()
     lock = Lock()
+    stock_zh_a_gdhs_df = None
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -26,6 +27,7 @@ class StockA:
         end = self.time_fmt(1)
         start = self.time_fmt(40)
         day_df = None
+        stock_zh_a_gdhs_detail_em_df = None
         try:
             day_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust="")
         except:
@@ -39,6 +41,7 @@ class StockA:
         last_day_shou = day_df['收盘'][last_1]
         last_day_kai = day_df['开盘'][last_1]
         last_day_q = day_df['成交量'][last_1]
+        last_huan_shou_lv = day_df['换手率'][last_1]
         last_day_price_avg = (last_day_kai + last_day_shou) /2
 
         last_2 = last_1 - 1
@@ -47,6 +50,9 @@ class StockA:
         last_day2_price_avg = (last_day2_kai + last_day2_shou) /2
 
         last_2day_price_avg_max = max(last_day_price_avg, last_day2_price_avg)
+
+        # 获取股东数
+        # zong_gu_ben = stock_zh_a_gdhs_detail_em_df['总股本']
 
         # 20 日均线
         day_df['avg20'] = day_df['收盘'].rolling(20).mean()
@@ -144,23 +150,38 @@ class StockA:
         avg = sum_close/total_q
         today_price_avg = (first_price + price) / 2
         # total_q = total_q * 100
+        # zong_gu_ben = self.get_zong_gu_ben(code)
+        # huan_shou_lv = int(total_q * 100 * 100 * 100 / zong_gu_ben) / 100
+        # 用昨天换手率判断
+        huan_shou_lv = last_huan_shou_lv
+
+        # 下跌不放量
+        accept_q = (price > first_price and total_q < last_day_q * 1.5) or (price <= first_price and total_q < last_day_q)
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
             print(f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
             print(f"code={code}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}")
+            # print(f"code={code}, huan_shou_lv={huan_shou_lv}, zong_gu_ben={zong_gu_ben}")
+            print(f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
+        
+        # 排除换手率小于1的股票
+        if huan_shou_lv < 1 or huan_shou_lv > 15:
+            return None
+
         filter_flag = False
+
         # policy 1: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
         if day_df['trend_3'][last_1] >= 1:
             # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
-            if total_q < last_day_q * 1.5 and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
+            if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
                 filter_flag = True
                 row_code[1] = self.policies[0]
 
         # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出
         elif max_price > day_df['box_up'][last_1]:
             # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
-            if (buy_q > sell_q or total_q < last_day_q * 1.5) and today_price_avg > last_2day_price_avg_max:
+            if (buy_q > sell_q or accept_q) and today_price_avg > last_2day_price_avg_max:
                 filter_flag = True
                 row_code[1] = self.policies[1]
 
@@ -182,6 +203,16 @@ class StockA:
             return row_code
 
         return None
+
+    def get_zong_gu_ben(self, stock_code):
+        if self.stock_zh_a_gdhs_df is None:
+            # 获取股东数、总股本等基础信息
+            self.stock_zh_a_gdhs_df = ak.stock_zh_a_gdhs(symbol="最新")
+        gdhs_df = self.stock_zh_a_gdhs_df
+        stock_zong_gu_ben =  gdhs_df[gdhs_df['代码'] == stock_code]['总股本']
+        if stock_zong_gu_ben is None:
+            return 1
+        return stock_zong_gu_ben.iloc[0]
 
     def avg_diff(self, a):
         a_1 = a.iloc[0]
@@ -386,7 +417,8 @@ if __name__ == "__main__":
     rs = stock.run()
     # print(f"rs type = {type(rs)}") 
     rs.sort(reverse=True, key=lambda r: r['score'])
-    print(rs)
+    for idx, row in enumerate(rs):
+        print(row)
     print(f"\nTotal: {len(rs)} stocks")
     p_1_list = []
     p_2_list = []
