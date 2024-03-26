@@ -18,6 +18,8 @@ class StockA:
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
         debug_code = '0'
+        if debug_code !='0' and code != debug_code:
+            return None
         # 返回： 股票代码
         row_code = [code, 0, 0]
         # 获取前一日价格
@@ -35,7 +37,16 @@ class StockA:
             return None
         last_1 = day_df['收盘'].size - 1
         last_day_shou = day_df['收盘'][last_1]
+        last_day_kai = day_df['开盘'][last_1]
         last_day_q = day_df['成交量'][last_1]
+        last_day_price_avg = (last_day_kai + last_day_shou) /2
+
+        last_2 = last_1 - 1
+        last_day2_shou = day_df['收盘'][last_2]
+        last_day2_kai = day_df['开盘'][last_2]
+        last_day2_price_avg = (last_day2_kai + last_day2_shou) /2
+
+        last_2day_price_avg_max = max(last_day_price_avg, last_day2_price_avg)
 
         # 20 日均线
         day_df['avg20'] = day_df['收盘'].rolling(20).mean()
@@ -131,21 +142,25 @@ class StockA:
                 print(f"sum_close/total_q={sum_close}/{total_q}")
 
         avg = sum_close/total_q
+        today_price_avg = (first_price + price) / 2
         # total_q = total_q * 100
         
         if code == debug_code:
-            print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}")
+            print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
+            print(f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
+            print(f"code={code}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}")
         filter_flag = False
         # policy 1: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
         if day_df['trend_3'][last_1] >= 1:
-            today_price_avg = (first_price + price) / 2
-            if total_q < last_day_q * 1.5 and today_price_avg > first_price:
+            # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
+            if total_q < last_day_q * 1.5 and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
                 filter_flag = True
                 row_code[1] = self.policies[0]
 
-        # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出逃
+        # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出
         elif max_price > day_df['box_up'][last_1]:
-            if buy_q > sell_q or total_q < last_day_q * 1.5:
+            # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
+            if (buy_q > sell_q or total_q < last_day_q * 1.5) and today_price_avg > last_2day_price_avg_max:
                 filter_flag = True
                 row_code[1] = self.policies[1]
 
