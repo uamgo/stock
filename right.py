@@ -156,12 +156,13 @@ class StockA:
         huan_shou_lv = last_huan_shou_lv
 
         # 下跌不放量
-        accept_q = (price > first_price and total_q < last_day_q * 1.5) or (price <= first_price and total_q < last_day_q)
+        accept_q = (price > first_price and total_q < last_day_q * 1.3) or (price <= first_price and total_q < last_day_q )
+        accept_q = accept_q and price > avg
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
             print(f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
-            print(f"code={code}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}")
+            print(f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}")
             # print(f"code={code}, huan_shou_lv={huan_shou_lv}, zong_gu_ben={zong_gu_ben}")
             print(f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
         
@@ -181,7 +182,7 @@ class StockA:
         # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出
         elif max_price > day_df['box_up'][last_1]:
             # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
-            if (buy_q > sell_q or accept_q) and today_price_avg > last_2day_price_avg_max:
+            if (buy_q > sell_q or accept_q) and accept_q and today_price_avg > last_2day_price_avg_max:
                 filter_flag = True
                 row_code[1] = self.policies[1]
 
