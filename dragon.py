@@ -5,16 +5,14 @@ import time
 import datetime
 import sys
 import pandas as pd
-import math
 
-
+# 寻找龙头选手
 class StockA:
     black_list = ['600865']
-    policies = [0, 0b1, 0b10, 0b100, 0b1000, 0b10000, 0b100000]
+    policies = [900, 800, 700]
     rs = list()
     lock = Lock()
     stock_zh_a_gdhs_df = None
-    total_trade_ellipse = 300
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -60,7 +58,6 @@ class StockA:
         day_df['avg20'] = day_df['收盘'].rolling(20).mean()
         if day_df['avg20'][last_1] is None or last_day_shou < day_df['avg20'][last_1]:
             return None
-        last_avg20 = day_df['avg20'][last_1]
         day_df['avg'] = day_df['开盘'].rolling(window=1).apply(self.avg, args=(day_df['收盘'],))
         day_df['trend_2'] = day_df['avg'].rolling(2).apply(lambda a: self.avg_diff(a))
         if day_df['trend_2'][last_1] is None:
@@ -121,9 +118,6 @@ class StockA:
             if not is_valid:
                 continue
             price = min_df['成交价'][i]
-
-            cnt += 1
-
             if price == 0:
                 continue
             max_price = max(max_price, price)
@@ -144,6 +138,7 @@ class StockA:
                 max_s_q = max(max_s_q, q)
 
             total_q += int(q)
+            cnt += 1
             sum_close += int(price * q * 100)/100
             try:
                 # print(f"sum_close/total_q={sum_close}/{total_q}")
@@ -176,59 +171,39 @@ class StockA:
             return None
 
         filter_flag = False
-        row_code_tmp = 0
-        assigned_score = 0
 
-        # policy 五星 : 一、箱体突破（最高价高于箱体）；二、无明显放量出
-        if max_price > day_df['box_up'][last_1]:
-            # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
-            if (buy_q > sell_q or accept_q) and accept_q and today_price_avg > last_2day_price_avg_max:
-                filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[5]
-                assigned_score = max(assigned_score, self.get_score(price, avg))
-
-        # policy 四星: 一、和前一日同一时间相比缩量；二、靠近20日均线
-        if total_q < last_day_q * cnt / self.total_trade_ellipse \
-                and last_avg20 > price * 0.95 and last_avg20 < price * 1.05:
-            # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
-            if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
-                filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[4]
-                assigned_score = max(assigned_score, self.get_score(price, last_day_price_avg))
-
-        # policy 三星: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
+        # policy 1: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
         if day_df['trend_3'][last_1] >= 1:
             # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
             if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
                 filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[3]
-                if assigned_score == 0:
-                    assigned_score = self.get_score(price, avg)
+                row_code[1] = self.policies[0]
 
-        # policy 一星: 一、连续三天创新低；二、放量资金抄底
-        if day_df['trend_3'][last_1] <= -1:
+        # policy 2: 一、箱体突破（最高价高于箱体）；二、无明显放量出
+        elif max_price > day_df['box_up'][last_1]:
+            # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
+            if (buy_q > sell_q or accept_q) and accept_q and today_price_avg > last_2day_price_avg_max:
+                filter_flag = True
+                row_code[1] = self.policies[1]
+
+        # policy 3: 一、连续三天创新低；二、放量资金抄底
+        elif day_df['trend_3'][last_1] <= -1:
             # 最大买单小于最大买单的50%；当前价格高于移动平均价；买单数量大约
             filter_flag = (max_s_q < max_b_q * 0.5 and price > avg and buy_q > sell_q and cnt_hight > cnt * 0.6)
             if filter_flag:
-                row_code_tmp = row_code_tmp | self.policies[1]
-                if assigned_score == 0:
-                    assigned_score = self.get_score(price, avg)
+                row_code[1] = self.policies[2]
 
-        if assigned_score == 0:
-            print(f"code={code}, assigned_score is None")
-            return None
+        x = 0
+        if row_code[1] == 800 or row_code[1] == 900:
+            x = 900
 
-        row_code[1] = row_code_tmp * 100
-        row_code[2] = row_code[1] + assigned_score
+        row_code[2] = x + (10000 - int(10000 * abs(price - avg) / avg)) / 100
         if filter_flag:
             print(
                 f"{code} , max_s_q={max_s_q}, max_b_q={max_b_q}, cnt_hight={cnt_hight}, cnt={cnt}, total_q={total_q}, last_day_q={last_day_q}, price={price}, avg={avg}, last_day_shou={last_day_shou}")
             return row_code
 
         return None
-
-    def get_score(self, price_s, avg_s):
-        return (10000 - int(10000 * abs(price_s - avg_s) / avg_s)) / 100
 
     def get_zong_gu_ben(self, stock_code):
         if self.stock_zh_a_gdhs_df is None:
@@ -446,19 +421,22 @@ if __name__ == "__main__":
     for idx, row in enumerate(rs):
         print(row)
     print(f"\nTotal: {len(rs)} stocks")
-    p_list = [[], [], [], [], [], []]
+    p_1_list = []
+    p_2_list = []
+    p_3_list = []
     for idx, row in enumerate(rs):
-        policy_type = row['policy_type']
-        for i in range(5, 1, -1):
-            if (math.trunc(policy_type / 100) & stock.policies[i]) != 0:
-                p_list[5 - i].append(row)
+        if row['policy_type'] == stock.policies[0]:
+            p_1_list.append(row)
+        elif row['policy_type'] == stock.policies[1]:
+            p_2_list.append(row)
+        else:
+            p_3_list.append(row)
 
     end_ts = time.time()
 
-    stock.print_pocicy(rs[:5], f"*** 重点推荐的股票 ***")
-
     print("\n~~~~~~~~~~~\n")
-    for i in range(0, 5):
-        stock.print_pocicy(p_list[i], f"策略优先级 {i}")
+    stock.print_pocicy(p_1_list, "策略一：连续上涨")
+    stock.print_pocicy(p_2_list, "策略二：箱体突破")
+    stock.print_pocicy(p_3_list, "策略三：连续下跌")
 
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
