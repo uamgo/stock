@@ -215,7 +215,7 @@ class StockA:
                     assigned_score = self.get_score(price, avg)
 
         if assigned_score == 0:
-            print(f"code={code}, assigned_score is None")
+            # print(f"code={code}, assigned_score is None")
             return None
 
         row_code[1] = row_code_tmp * 100
