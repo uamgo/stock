@@ -14,7 +14,7 @@ class StockA:
     rs = list()
     lock = Lock()
     stock_zh_a_gdhs_df = None
-    total_trade_ellipse = 300
+    total_trade_ellipse = 240
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -111,6 +111,7 @@ class StockA:
         is_valid = False
         max_price = 0
         first_price = 0
+        time_m = None
 
         while i < size - 1:
             i += 1
@@ -122,8 +123,6 @@ class StockA:
                 continue
             price = min_df['成交价'][i]
 
-            cnt += 1
-
             if price == 0:
                 continue
             max_price = max(max_price, price)
@@ -132,6 +131,9 @@ class StockA:
             #     print(f"price: {price} hour: {min_df['时间'][i]} q: {q}")
             if int(q) == 0:
                 continue
+
+            cnt += 1
+
             direct = min_df['买卖盘性质'][i]
             is_buy = (direct == '买盘')
             is_sell = (direct == '卖盘')
@@ -178,6 +180,11 @@ class StockA:
         filter_flag = False
         row_code_tmp = 0
         assigned_score = 0
+        time_split = time_m.split(':')
+        hour_m = int(time_split[0])
+        until_now_diff = (int(time_split[0]) - 9) * 60 + int(time_split[1]) - 30
+        if hour_m >= 13:
+            until_now_diff -= 90
 
         # policy 五星 : 一、箱体突破（最高价高于箱体）；二、无明显放量出
         if max_price > day_df['box_up'][last_1]:
@@ -188,7 +195,7 @@ class StockA:
                 assigned_score = max(assigned_score, self.get_score(price, avg))
 
         # policy 四星: 一、和前一日同一时间相比缩量；二、靠近20日均线
-        if total_q < last_day_q * cnt / self.total_trade_ellipse \
+        if total_q < last_day_q * until_now_diff / self.total_trade_ellipse \
                 and last_avg20 > price * 0.95 and last_avg20 < price * 1.05:
             # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
             if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
