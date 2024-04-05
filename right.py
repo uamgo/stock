@@ -24,7 +24,7 @@ class StockA:
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
         debug_code = '0'
-        is_debug_end_time = True
+        is_debug_end_time = False
         debug_end_time = '14:30'
         if debug_code !='0' and code != debug_code:
             return None
