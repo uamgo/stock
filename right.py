@@ -26,7 +26,7 @@ class StockA:
         debug_code = '0'
         is_debug_end_time = False
         debug_end_time = '14:30'
-        if debug_code !='0' and code != debug_code:
+        if debug_code != '0' and code != debug_code:
             return None
         # 返回： 股票代码
         row_code = [code, 0, 0]
@@ -196,7 +196,7 @@ class StockA:
         # 下跌不放量
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg and min_dict_up_cnt * 2 > min_dict_cnt
+        accept_q = accept_q and price > avg
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
@@ -247,7 +247,10 @@ class StockA:
                 if assigned_score == 0:
                     assigned_score = self.get_score(price, avg)
 
-        if assigned_score == 0:
+        if min_dict_up_cnt == 0:
+            min_dict_up_cnt = 1
+        assigned_score = self.get_score(min_dict_cnt, min_dict_up_cnt)
+        if assigned_score < 30:
             # print(f"code={code}, assigned_score is None")
             return None
 
