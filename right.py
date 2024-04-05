@@ -24,6 +24,8 @@ class StockA:
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
         debug_code = '0'
+        is_debug_end_time = False
+        debug_end_time = '14:30'
         if debug_code !='0' and code != debug_code:
             return None
         # 返回： 股票代码
@@ -120,7 +122,6 @@ class StockA:
         total_q = 0
         buy_q = 0
         sell_q = 0
-        is_valid = False
         max_price = 0
         first_price = 0
         time_m = None
@@ -128,11 +129,14 @@ class StockA:
         while i < size - 1:
             i += 1
             time_m = min_df["时间"][i]
-            if not is_valid and time_m.startswith('09:30'):
-                first_price = min_df['成交价'][i]
-                is_valid = True
-            if not is_valid:
+            until_now_diff = self.get_time_diff_mins('09:30', time_m)
+            # 9:30 前的数据不在统计范围内
+            if until_now_diff < 0:
                 continue
+            # 获取开盘价
+            if first_price == 0:
+                first_price = min_df['成交价'][i]
+
             price = min_df['成交价'][i]
 
             if price == 0:
@@ -166,20 +170,29 @@ class StockA:
             except:
                 print(f"sum_close/total_q={sum_close}/{total_q}")
 
+            # 如果开启了昨日回测模式，根据debug_end_time时间决定回测到的时间
+            if is_debug_end_time:
+                if self.get_time_diff_mins(debug_end_time, time_m) > 0:
+                    break
+
         avg = sum_close/total_q
         today_price_avg = (first_price + price) / 2
 
         # 用昨天换手率判断
         huan_shou_lv = last_huan_shou_lv
 
+        until_now_diff = self.get_trade_diff_mins(time_m)
+        last_day_same_time_q = last_day_q * until_now_diff / self.total_trade_ellipse
+
         # 下跌不放量
-        accept_q = (price > first_price and total_q < last_day_q * 1.3) or (price <= first_price and total_q < last_day_q )
+        accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
+                   or (price <= first_price and total_q < last_day_same_time_q)
         accept_q = accept_q and price > avg
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
             print(f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
-            print(f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}")
+            print(f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}, last_day_same_time_q={last_day_same_time_q}")
             # print(f"code={code}, huan_shou_lv={huan_shou_lv}, zong_gu_ben={zong_gu_ben}")
             print(f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
         
@@ -190,11 +203,6 @@ class StockA:
         filter_flag = False
         row_code_tmp = 0
         assigned_score = 0
-        time_split = time_m.split(':')
-        hour_m = int(time_split[0])
-        until_now_diff = (int(time_split[0]) - 9) * 60 + int(time_split[1]) - 30
-        if hour_m >= 13:
-            until_now_diff -= 90
 
         # policy 五星 : 一、箱体突破（最高价高于箱体）；二、无明显放量出
         if max_price > day_df['box_up'][last_1]:
@@ -205,8 +213,7 @@ class StockA:
                 assigned_score = max(assigned_score, self.get_score(price, avg))
 
         # policy 四星: 一、和前一日同一时间相比缩量；二、靠近20日均线
-        if total_q < last_day_q * until_now_diff / self.total_trade_ellipse \
-                and last_avg20 > price * 0.95 and last_avg20 < price * 1.05:
+        if total_q < last_day_same_time_q and last_avg20 > price * 0.95 and last_avg20 < price * 1.05:
             # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
             if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
                 filter_flag = True
@@ -236,13 +243,41 @@ class StockA:
             return None
 
         row_code[1] = row_code_tmp * 100
-        row_code[2] = row_code[1] + assigned_score
+        row_code[2] = assigned_score
         if filter_flag:
             print(
                 f"{code} , max_s_q={max_s_q}, max_b_q={max_b_q}, cnt_hight={cnt_hight}, cnt={cnt}, total_q={total_q}, last_day_q={last_day_q}, price={price}, avg={avg}, last_day_shou={last_day_shou}")
             return row_code
 
         return None
+
+    def get_trade_diff_mins(self,end_time):
+        trade_diff_09_30 = self.get_time_diff_mins('09:30', end_time)
+        trade_diff_11_30 = self.get_time_diff_mins('11:30', end_time)
+        trade_diff_13_00 = self.get_time_diff_mins('13:00', end_time)
+
+        # 9:30 前 则返回 0
+        if trade_diff_09_30 < 0:
+            return 0
+        # 9:30 - 11:30 中间 则返回和9:30间的差值
+        if trade_diff_11_30 <= 0:
+            return trade_diff_09_30
+        # 下午13:00前 则返回 上午总交易时间 120mins
+        if trade_diff_13_00 <= 0:
+            return 120
+        # 下午13:00 - 15:00 则返回 上午总时间 + 下午和13:00间的差值
+        return 120 + trade_diff_13_00
+
+    def get_time_diff_mins(self, start_time, end_time):
+        s_time_split = start_time.split(':')
+        s_hour = int(s_time_split[0])
+        s_min = int(s_time_split[1])
+
+        e_time_split = end_time.split(':')
+        e_hour = int(e_time_split[0])
+        e_min = int(e_time_split[1])
+
+        return (e_hour - s_hour) * 60 + e_min - s_min
 
     def get_score(self, price_s, avg_s):
         return (10000 - int(10000 * abs(price_s - avg_s) / avg_s)) / 100
