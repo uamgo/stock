@@ -126,10 +126,12 @@ class StockA:
         first_price = 0
         time_m = None
 
+        min_dict = {}
         while i < size - 1:
             i += 1
             time_m = min_df["时间"][i]
             until_now_diff = self.get_time_diff_mins('09:30', time_m)
+            min_dict_key = time_m[:5]
             # 9:30 前的数据不在统计范围内
             if until_now_diff < 0:
                 continue
@@ -163,6 +165,11 @@ class StockA:
 
             total_q += int(q)
             sum_close += int(price * q * 100)/100
+            avg = sum_close / total_q
+            if price > avg:
+                min_dict[min_dict_key] = 1
+            else:
+                min_dict[min_dict_key] = 0
             try:
                 # print(f"sum_close/total_q={sum_close}/{total_q}")
                 if price > (int(sum_close * 100) / int(total_q))/100:
@@ -175,6 +182,8 @@ class StockA:
                 if self.get_time_diff_mins(debug_end_time, time_m) > 0:
                     break
 
+        min_dict_cnt = len(min_dict)
+        min_dict_up_cnt = sum(min_dict.values())
         avg = sum_close/total_q
         today_price_avg = (first_price + price) / 2
 
@@ -187,7 +196,7 @@ class StockA:
         # 下跌不放量
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg
+        accept_q = accept_q and price > avg and min_dict_up_cnt * 2 >= min_dict_cnt
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
