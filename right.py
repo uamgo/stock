@@ -24,7 +24,7 @@ class StockA:
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
         debug_code = '0'
-        is_debug_end_time = False
+        is_debug_end_time = True
         debug_end_time = '14:30'
         if debug_code !='0' and code != debug_code:
             return None
@@ -196,7 +196,7 @@ class StockA:
         # 下跌不放量
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg and min_dict_up_cnt * 2 >= min_dict_cnt
+        accept_q = accept_q and price > avg and min_dict_up_cnt * 2 > min_dict_cnt
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
