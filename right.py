@@ -6,6 +6,7 @@ import datetime
 import sys
 import pandas as pd
 import math
+import exchange_calendars as xcals
 
 
 class StockA:
@@ -15,6 +16,8 @@ class StockA:
     lock = Lock()
     stock_zh_a_gdhs_df = None
     total_trade_ellipse = 240
+    xshg = xcals.get_calendar("XSHG")
+    is_today_trade = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -36,9 +39,14 @@ class StockA:
             e = sys.exc_info()[0]
             # print(f"code={code}, {e}")
             return None 
-        if day_df.size == 0:
+        if len(day_df) == 0:
             # print(f"No daily data with code={code}")
             return None
+
+        # 如果今天不是交易日，那么删除最后一个交易日的日数据，因为分时数据为最后一个交易日数据
+        if not self.is_today_trade:
+            day_df.drop([len(day_df) - 1], inplace=True)
+
         last_1 = day_df['收盘'].size - 1
         last_day_shou = day_df['收盘'][last_1]
         last_day_kai = day_df['开盘'][last_1]
@@ -49,9 +57,16 @@ class StockA:
         last_2 = last_1 - 1
         last_day2_shou = day_df['收盘'][last_2]
         last_day2_kai = day_df['开盘'][last_2]
-        last_day2_price_avg = (last_day2_kai + last_day2_shou) /2
+        last_day2_q = day_df['成交量'][last_2]
+        last_2_huan_shou_lv = day_df['换手率'][last_2]
+        last_day2_price_avg = (last_day2_kai + last_day2_shou) / 2
 
         last_2day_price_avg_max = max(last_day_price_avg, last_day2_price_avg)
+
+        last_3 = last_2 - 1
+        last_day3_shou = day_df['收盘'][last_3]
+        last_day3_kai = day_df['开盘'][last_3]
+        last_day3_price_avg = (last_day3_kai + last_day3_shou) / 2
 
         # 获取股东数
         # zong_gu_ben = stock_zh_a_gdhs_detail_em_df['总股本']
@@ -95,13 +110,10 @@ class StockA:
             # print(f"no data for ak.stock_intraday_em with code={code}")
             return None
 
-        last_min_i = min_df['成交价'].size - 1
-
         max_b_q = 0
         max_s_q = 0
         size = min_df['成交价'].size
         i = 0
-        last_close_price = 0
         cnt = 0
         sum_close = 0
         cnt_hight = 0
@@ -156,9 +168,7 @@ class StockA:
 
         avg = sum_close/total_q
         today_price_avg = (first_price + price) / 2
-        # total_q = total_q * 100
-        # zong_gu_ben = self.get_zong_gu_ben(code)
-        # huan_shou_lv = int(total_q * 100 * 100 * 100 / zong_gu_ben) / 100
+
         # 用昨天换手率判断
         huan_shou_lv = last_huan_shou_lv
 
@@ -453,19 +463,26 @@ if __name__ == "__main__":
     for idx, row in enumerate(rs):
         print(row)
     print(f"\nTotal: {len(rs)} stocks")
-    p_list = [[], [], [], [], [], []]
+    p_list = [[], [], [], [], []]
+    p_list_tips = ['箱体突破策略', '靠近20日生命线', '连续3日上升趋势', '连续三天创新低反抽', '']
+    important_list = []
     for idx, row in enumerate(rs):
         policy_type = row['policy_type']
+        policy_type_tmp = math.trunc(policy_type / 100)
+        if (policy_type_tmp & stock.policies[5]) != 0 and (policy_type_tmp & stock.policies[4]) != 0:
+            important_list.append(row)
+            continue
         for i in range(5, 1, -1):
             if (math.trunc(policy_type / 100) & stock.policies[i]) != 0:
                 p_list[5 - i].append(row)
+                break
 
     end_ts = time.time()
 
-    stock.print_pocicy(rs[:5], f"*** 重点推荐的股票 ***")
-
     print("\n~~~~~~~~~~~\n")
+    stock.print_pocicy(important_list[:5], f"*** 重点推荐的股票（同时符合箱体突破 + 靠近20日均线） ***")
+
     for i in range(0, 5):
-        stock.print_pocicy(p_list[i], f"策略优先级 {i}")
+        stock.print_pocicy(p_list[i], f"{p_list_tips[i]}")
 
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
