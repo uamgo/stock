@@ -14,7 +14,7 @@ class StockA:
 
     parser = argparse.ArgumentParser(description='stock script args')
     parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
-    parser.add_argument('-d', '--is_debug', type=bool, metavar='', required=False, help='is_debug using debug_end_time', default=False)
+    parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time', default=False)
     parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
 
     args = parser.parse_args()
@@ -101,6 +101,7 @@ class StockA:
             print(f"last one in box_up is None!")
             return None
         if code == debug_code:
+            print(f"is_debug={is_debug_end_time}, debug_end_time={debug_end_time}")
             print("----avg----")
             print(day_df['avg'])
             print("----trend_2----")
