@@ -258,7 +258,10 @@ class StockA:
 
         if min_dict_up_cnt == 0:
             min_dict_up_cnt = 1
-        assigned_score = self.get_score(min_dict_cnt, min_dict_up_cnt)
+        mins_score = math.trunc(self.get_score(min_dict_cnt, min_dict_up_cnt) / 10) * 10
+        q_score = math.trunc(last_day_q * 100 / total_q)/100
+        assigned_score = mins_score + q_score
+
         if assigned_score < 30:
             # print(f"code={code}, assigned_score is None")
             return None
