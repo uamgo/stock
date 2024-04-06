@@ -523,7 +523,7 @@ if __name__ == "__main__":
         print(row)
     print(f"\nTotal: {len(rs)} stocks")
     p_list = [[], [], [], [], []]
-    p_list_tips = ['箱体突破策略', '靠近20日生命线', '连续3日上升趋势', '连续三天创新低反抽', '']
+    p_list_tips = ['箱体突破策略', '靠近20日生命线', '连续3日上升趋势', '连续三天创新低反抽', None]
     important_list = []
     for idx, row in enumerate(rs):
         policy_type = row['policy_type']
@@ -542,6 +542,7 @@ if __name__ == "__main__":
     stock.print_pocicy(important_list[:5], f"*** 重点推荐的股票（同时符合箱体突破 + 靠近20日均线） ***")
 
     for i in range(0, 5):
-        stock.print_pocicy(p_list[i], f"{p_list_tips[i]}")
+        if p_list_tips[i] is not None:
+            stock.print_pocicy(p_list[i], f"{p_list_tips[i]}")
 
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
