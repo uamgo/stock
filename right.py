@@ -7,9 +7,18 @@ import sys
 import pandas as pd
 import math
 import exchange_calendars as xcals
+import argparse
 
 
 class StockA:
+
+    parser = argparse.ArgumentParser(description='stock script args')
+    parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
+    parser.add_argument('-d', '--is_debug', type=bool, metavar='', required=False, help='is_debug using debug_end_time', default=False)
+    parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
+
+    args = parser.parse_args()
+
     black_list = ['600865']
     policies = [0, 0b1, 0b10, 0b100, 0b1000, 0b10000, 0b100000]
     rs = list()
@@ -23,9 +32,9 @@ class StockA:
     # 策略类型：900 策略一，800 策略二，700 策略三
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code):
-        debug_code = '0'
-        is_debug_end_time = False
-        debug_end_time = '14:30'
+        debug_code = self.args.code
+        is_debug_end_time = self.args.is_debug
+        debug_end_time = self.args.debug_end_time
         if debug_code != '0' and code != debug_code:
             return None
         # 返回： 股票代码
@@ -492,7 +501,7 @@ class StockA:
         for idx, row in enumerate(p_list):
             code = row['code']
             print(
-                f"""{str(idx+1)}, code={code}, name={row['name']}, 市盈率-动态={row['shi_val']}, score={row['score']}, 涨跌幅={row['zhang']}""")
+                f"""{str(idx+1)}, {code} , name={row['name']}, 市盈率-动态={row['shi_val']}, score={row['score']}, 涨跌幅={row['zhang']}""")
             print(stock.to_link(code))
             if idx >= 4:
                 print(f"\nTop 5 from {len(p_list)} stocks")
