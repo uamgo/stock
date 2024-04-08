@@ -257,7 +257,7 @@ class StockA:
             # 最大买单小于最大买单的50%；当前价格高于移动平均价；买单数量大约
             filter_flag = (max_s_q < max_b_q * 0.5 and price > avg and buy_q > sell_q and cnt_hight > cnt * 0.6)
             if filter_flag:
-                row_code_tmp = row_code_tmp | self.policies[1]
+                row_code_tmp = row_code_tmp | self.policies[2]
                 if assigned_score == 0:
                     assigned_score = self.get_score(price, avg)
 
@@ -417,7 +417,7 @@ class StockA:
             if stock_df is None:
                 stock_df = concept_tmp_df
             else:
-                print(f"Covered  {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
+                print(f"Covered [{ind}] {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
                 stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
 
         # stock_df = stock_df.drop_duplicates(subset=[''])
@@ -536,7 +536,7 @@ if __name__ == "__main__":
         if (policy_type_tmp & stock.policies[5]) != 0 and (policy_type_tmp & stock.policies[4]) != 0:
             important_list.append(row)
             continue
-        for i in range(5, 1, -1):
+        for i in range(5, 0, -1):
             if (math.trunc(policy_type / 100) & stock.policies[i]) != 0:
                 p_list[5 - i].append(row)
                 break
