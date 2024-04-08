@@ -16,6 +16,8 @@ class StockA:
     parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
     parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time', default=False)
     parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
+    parser.add_argument('-s', '--min_score', type=int, metavar='', required=False, help='min score of a stock, 30 by default', default="30")
+    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False, help='Top n concepts, 10 by default', default="10")
 
     args = parser.parse_args()
 
@@ -35,6 +37,8 @@ class StockA:
         debug_code = self.args.code
         is_debug_end_time = self.args.is_debug
         debug_end_time = self.args.debug_end_time
+        args_min_score = self.args.min_score
+        args_concept_num = self.args.concept_num
         if debug_code != '0' and code != debug_code:
             return None
         # 返回： 股票代码
@@ -263,7 +267,7 @@ class StockA:
         q_score = math.trunc(last_day_q * 100 / total_q)/100
         assigned_score = mins_score + q_score
 
-        if assigned_score < 30:
+        if assigned_score < args_min_score:
             # print(f"code={code}, assigned_score is None")
             return None
 
@@ -395,7 +399,7 @@ class StockA:
     def run(self):
         # 获取所有概念板块，判断板块涨幅排名前20
         stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
-        stock_top = stock_board_concept_name_em_df.nlargest(10,'涨跌幅',keep='first')
+        stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num,'涨跌幅',keep='first')
         stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
         stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
         # stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
