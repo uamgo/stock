@@ -13,11 +13,13 @@ import argparse
 class StockA:
 
     parser = argparse.ArgumentParser(description='stock script args')
+    parser.add_argument('-a', '--all', action='store_true', required=False, help='Using all stocks', default=False)
     parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
     parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time', default=False)
-    parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
+    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False, help='Top n concepts, 10 by default without -a', default="10")
+    parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False, help='remove last day which is included in fenshi', default=False)
     parser.add_argument('-s', '--min_score', type=int, metavar='', required=False, help='min score of a stock, 30 by default', default="30")
-    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False, help='Top n concepts, 10 by default', default="10")
+    parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
 
     args = parser.parse_args()
 
@@ -29,6 +31,7 @@ class StockA:
     total_trade_ellipse = 240
     xshg = xcals.get_calendar("XSHG")
     is_today_trade = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
+    base_path = "/tmp/stock"
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -59,7 +62,7 @@ class StockA:
             return None
 
         # 如果今天不是交易日，那么删除最后一个交易日的日数据，因为分时数据为最后一个交易日数据
-        if not self.is_today_trade:
+        if not self.is_today_trade or self.args.is_rm_last_day:
             day_df.drop([len(day_df) - 1], inplace=True)
 
         last_1 = day_df['收盘'].size - 1
@@ -210,7 +213,7 @@ class StockA:
         # 下跌不放量
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg
+        accept_q = accept_q and price > avg * 0.7
         
         if code == debug_code:
             print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
@@ -397,36 +400,40 @@ class StockA:
         return f"https://wap.eastmoney.com/quote/stock/{code_type}{code}.html?appfenxiang=1"
 
     def run(self):
-        # 获取所有概念板块，判断板块涨幅排名前20
-        stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
-        stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num,'涨跌幅',keep='first')
-        stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
-        stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
-        # stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
-        print(stock_board_concept_name_em_df)
-        print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
-        stock_df = None
-        for ind in stock_board_concept_name_em_df.index:
-            concept_name = stock_board_concept_name_em_df["板块名称"][ind]
-            # 找到所有符合条件的概念股并去重
-            concept_tmp_df = ak.stock_board_concept_cons_em(symbol = concept_name)
-            concept_tmp_len = len(concept_tmp_df["代码"])
-            if concept_tmp_len > 1000:
-                print(f"Ignore concept: {concept_name} with size: {concept_tmp_len}")
-                continue
-            if stock_df is None:
-                stock_df = concept_tmp_df
-            else:
-                print(f"Covered [{ind}] {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
-                stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
 
-        # stock_df = stock_df.drop_duplicates(subset=[''])
-        # stock_df = stock_df.drop_duplicates(subset=['代码', '名称', '涨跌幅', '市盈率-动态', '成交量', '成交额'], keep='first')
-        stock_df = stock_df.drop_duplicates(subset=['代码'], keep='first')
-        print(f"Covered stocks: {len(stock_df['代码'])}")
         s_ts = time.time()
-        # stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
-        stock_zh_a_spot_em_df = stock_df 
+        stock_zh_a_spot_em_df = None
+        if not self.args.all:
+            # 获取所有概念板块，判断板块涨幅排名前20
+            stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
+            stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num,'涨跌幅',keep='first')
+            stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
+            stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
+            # stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
+            print(stock_board_concept_name_em_df)
+            print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
+            stock_df = None
+            for ind in stock_board_concept_name_em_df.index:
+                concept_name = stock_board_concept_name_em_df["板块名称"][ind]
+                # 找到所有符合条件的概念股并去重
+                concept_tmp_df = ak.stock_board_concept_cons_em(symbol = concept_name)
+                concept_tmp_len = len(concept_tmp_df["代码"])
+                if concept_tmp_len > 1000:
+                    print(f"Ignore concept: {concept_name} with size: {concept_tmp_len}")
+                    continue
+                if stock_df is None:
+                    stock_df = concept_tmp_df
+                else:
+                    print(f"Covered [{ind}] {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
+                    stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
+
+            # stock_df = stock_df.drop_duplicates(subset=[''])
+            # stock_df = stock_df.drop_duplicates(subset=['代码', '名称', '涨跌幅', '市盈率-动态', '成交量', '成交额'], keep='first')
+            stock_df = stock_df.drop_duplicates(subset=['代码'], keep='first')
+            print(f"Covered stocks: {len(stock_df['代码'])}")
+            stock_zh_a_spot_em_df = stock_df
+        else:
+            stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
         # not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称']
         # and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
         thread_data_dict = dict()
