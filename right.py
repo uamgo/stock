@@ -19,7 +19,7 @@ class StockA:
     parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time',
                         default=False)
     parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False,
-                        help='Top n concepts, 10 by default without -a', default="10")
+                        help='Top n concepts, 20 by default without -a', default="20")
     parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
                         help='remove last day which is included in fenshi', default=False)
     parser.add_argument('-s', '--min_score', type=int, metavar='', required=False,
