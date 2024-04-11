@@ -8,20 +8,27 @@ import pandas as pd
 import math
 import exchange_calendars as xcals
 import argparse
+import stock_config as config
+import numpy as np
 
 
 class StockA:
-
     parser = argparse.ArgumentParser(description='stock script args')
     parser.add_argument('-a', '--all', action='store_true', required=False, help='Using all stocks', default=False)
     parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
-    parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time', default=False)
-    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False, help='Top n concepts, 10 by default without -a', default="10")
-    parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False, help='remove last day which is included in fenshi', default=False)
-    parser.add_argument('-s', '--min_score', type=int, metavar='', required=False, help='min score of a stock, 30 by default', default="30")
-    parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False, help='debug_end_time using 14:30 by default', default="14:30")
+    parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time',
+                        default=False)
+    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False,
+                        help='Top n concepts, 10 by default without -a', default="10")
+    parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
+                        help='remove last day which is included in fenshi', default=False)
+    parser.add_argument('-s', '--min_score', type=int, metavar='', required=False,
+                        help='min score of a stock, 30 by default', default="30")
+    parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False,
+                        help='debug_end_time using 14:30 by default', default="14:30")
 
     args = parser.parse_args()
+    conf = config.StockConfig()
 
     black_list = ['600865']
     policies = [0, 0b1, 0b10, 0b100, 0b1000, 0b10000, 0b100000]
@@ -52,17 +59,27 @@ class StockA:
         day_df = None
         stock_zh_a_gdhs_detail_em_df = None
         try:
-            day_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust="")
+            if not self.conf.exists_daily_data(code):
+                day_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust="")
+                self.conf.save_daily_data(code, day_df)
+            else:
+                day_df = self.conf.get_daily_data(code)
         except:
             e = sys.exc_info()[0]
-            # print(f"code={code}, {e}")
-            return None 
+            print(f"code={code}, {e}")
+            return None
         if len(day_df) == 0:
             # print(f"No daily data with code={code}")
             return None
 
         # 如果今天不是交易日，那么删除最后一个交易日的日数据，因为分时数据为最后一个交易日数据
-        if not self.is_today_trade or self.args.is_rm_last_day:
+        last_day_date = day_df["日期"][len(day_df) - 1]
+        if np.issubdtype(last_day_date, np.int64):
+            tmp_last_day_date = datetime.datetime.fromtimestamp(last_day_date/1000)
+        else:
+            tmp_last_day_date = day_df["日期"][len(day_df) - 1]
+        last_day_date_str = tmp_last_day_date.strftime("%Y-%m-%d")
+        if last_day_date_str == self.conf.today_str:
             day_df.drop([len(day_df) - 1], inplace=True)
 
         last_1 = day_df['收盘'].size - 1
@@ -70,7 +87,7 @@ class StockA:
         last_day_kai = day_df['开盘'][last_1]
         last_day_q = day_df['成交量'][last_1]
         last_huan_shou_lv = day_df['换手率'][last_1]
-        last_day_price_avg = (last_day_kai + last_day_shou) /2
+        last_day_price_avg = (last_day_kai + last_day_shou) / 2
 
         last_2 = last_1 - 1
         last_day2_shou = day_df['收盘'][last_2]
@@ -115,7 +132,6 @@ class StockA:
             print(day_df['trend_2'])
             print("----trend_3----")
             print(day_df['trend_3'])
-
 
         # 注意：该接口返回的数据只有最近一个交易日的有开盘价，其他日期开盘价为 0
         min_df = None
@@ -174,14 +190,14 @@ class StockA:
             is_sell = (direct == '卖盘')
 
             if is_buy:
-                buy_q += q 
+                buy_q += q
                 max_b_q = max(max_b_q, q)
             elif is_sell:
-                sell_q += q 
+                sell_q += q
                 max_s_q = max(max_s_q, q)
 
             total_q += int(q)
-            sum_close += int(price * q * 100)/100
+            sum_close += int(price * q * 100) / 100
             avg = sum_close / total_q
             if price > avg:
                 min_dict[min_dict_key] = 1
@@ -189,7 +205,7 @@ class StockA:
                 min_dict[min_dict_key] = 0
             try:
                 # print(f"sum_close/total_q={sum_close}/{total_q}")
-                if price > (int(sum_close * 100) / int(total_q))/100:
+                if price > (int(sum_close * 100) / int(total_q)) / 100:
                     cnt_hight += 1
             except:
                 print(f"sum_close/total_q={sum_close}/{total_q}")
@@ -201,7 +217,7 @@ class StockA:
 
         min_dict_cnt = len(min_dict)
         min_dict_up_cnt = sum(min_dict.values())
-        avg = sum_close/total_q
+        avg = sum_close / total_q
         today_price_avg = (first_price + price) / 2
 
         # 用昨天换手率判断
@@ -214,14 +230,18 @@ class StockA:
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
         accept_q = accept_q and price > avg * 0.7
-        
+
         if code == debug_code:
-            print(f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
-            print(f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
-            print(f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}, last_day_same_time_q={last_day_same_time_q}")
+            print(
+                f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
+            print(
+                f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
+            print(
+                f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}, last_day_same_time_q={last_day_same_time_q}")
             # print(f"code={code}, huan_shou_lv={huan_shou_lv}, zong_gu_ben={zong_gu_ben}")
-            print(f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
-        
+            print(
+                f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
+
         # 排除换手率小于1的股票
         if huan_shou_lv < 1 or huan_shou_lv > 15:
             return None
@@ -267,7 +287,7 @@ class StockA:
         if min_dict_up_cnt == 0:
             min_dict_up_cnt = 1
         mins_score = math.trunc(self.get_score(min_dict_cnt, min_dict_up_cnt) / 10) * 10
-        q_score = math.trunc(last_day_q * 100 / total_q)/100
+        q_score = math.trunc(last_day_q * 100 / total_q) / 100
         assigned_score = mins_score + q_score
 
         if assigned_score < args_min_score:
@@ -283,7 +303,7 @@ class StockA:
 
         return None
 
-    def get_trade_diff_mins(self,end_time):
+    def get_trade_diff_mins(self, end_time):
         trade_diff_09_30 = self.get_time_diff_mins('09:30', end_time)
         trade_diff_11_30 = self.get_time_diff_mins('11:30', end_time)
         trade_diff_13_00 = self.get_time_diff_mins('13:00', end_time)
@@ -319,7 +339,7 @@ class StockA:
             # 获取股东数、总股本等基础信息
             self.stock_zh_a_gdhs_df = ak.stock_zh_a_gdhs(symbol="最新")
         gdhs_df = self.stock_zh_a_gdhs_df
-        stock_zong_gu_ben =  gdhs_df[gdhs_df['代码'] == stock_code]['总股本']
+        stock_zong_gu_ben = gdhs_df[gdhs_df['代码'] == stock_code]['总股本']
         if stock_zong_gu_ben is None:
             return 1
         return stock_zong_gu_ben.iloc[0]
@@ -342,7 +362,7 @@ class StockA:
         # print(f"a_1={type(a)}")
         # print(f"b={b}")
         # print(f"b2={b.iloc[a.index[0]]}")
-        return (a.iloc[0] + b.iloc[a.index[0]])/2
+        return (a.iloc[0] + b.iloc[a.index[0]]) / 2
 
     def time_fmt(self, day_delta):
         # 先获得时间数组格式的日期
@@ -406,17 +426,23 @@ class StockA:
         if not self.args.all:
             # 获取所有概念板块，判断板块涨幅排名前20
             stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
-            stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num,'涨跌幅',keep='first')
-            stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
-            stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom],ignore_index=True)
+            stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num, '涨跌幅', keep='first')
+            # stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
+            stock_bottom = None
+            stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom], ignore_index=True)
             # stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
             print(stock_board_concept_name_em_df)
             print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
             stock_df = None
             for ind in stock_board_concept_name_em_df.index:
                 concept_name = stock_board_concept_name_em_df["板块名称"][ind]
+                concept_code = stock_board_concept_name_em_df["板块代码"][ind]
                 # 找到所有符合条件的概念股并去重
-                concept_tmp_df = ak.stock_board_concept_cons_em(symbol = concept_name)
+                if not self.conf.exists_concept_data(concept_code):
+                    concept_tmp_df = ak.stock_board_concept_cons_em(symbol=concept_name)
+                    self.conf.save_concept_data(concept_code, concept_tmp_df)
+                else:
+                    concept_tmp_df = self.conf.get_concept_data(concept_code)
                 concept_tmp_len = len(concept_tmp_df["代码"])
                 if concept_tmp_len > 1000:
                     print(f"Ignore concept: {concept_name} with size: {concept_tmp_len}")
@@ -424,11 +450,10 @@ class StockA:
                 if stock_df is None:
                     stock_df = concept_tmp_df
                 else:
-                    print(f"Covered [{ind}] {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
-                    stock_df = pd.concat([stock_df, concept_tmp_df],ignore_index=True)
+                    stock_df = pd.concat([stock_df, concept_tmp_df], ignore_index=True)
+                print(
+                    f"Covered [{ind + 1}] {concept_name}: {len(stock_df['代码'])} with concept_tmp_df: {len(concept_tmp_df['代码'])}")
 
-            # stock_df = stock_df.drop_duplicates(subset=[''])
-            # stock_df = stock_df.drop_duplicates(subset=['代码', '名称', '涨跌幅', '市盈率-动态', '成交量', '成交额'], keep='first')
             stock_df = stock_df.drop_duplicates(subset=['代码'], keep='first')
             print(f"Covered stocks: {len(stock_df['代码'])}")
             stock_zh_a_spot_em_df = stock_df
@@ -446,7 +471,7 @@ class StockA:
         v_n = 0
 
         for i in stock_zh_a_spot_em_df.index:
-            code = stock_zh_a_spot_em_df['代码'][i]
+            code = self.conf.get_format_code(str(stock_zh_a_spot_em_df['代码'][i]))
             # print("----------code--------")
             # print(code)
             n += 1
@@ -477,7 +502,7 @@ class StockA:
             v_n += 1
 
             shi_val = stock_zh_a_spot_em_df['市盈率-动态'][i]
-            #total_val = stock_zh_a_spot_em_df['总市值'][i]
+            # total_val = stock_zh_a_spot_em_df['总市值'][i]
             total_val = stock_zh_a_spot_em_df['成交量'][i]
             row = dict()
             row['code'] = code
