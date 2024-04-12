@@ -74,7 +74,7 @@ class StockA:
 
         # 如果今天不是交易日，那么删除最后一个交易日的日数据，因为分时数据为最后一个交易日数据
         last_day_date = day_df["日期"][len(day_df) - 1]
-        if np.issubdtype(last_day_date, np.int64):
+        if np.issubdtype(type(last_day_date), np.int64):
             tmp_last_day_date = datetime.datetime.fromtimestamp(last_day_date/1000)
         else:
             tmp_last_day_date = day_df["日期"][len(day_df) - 1]
