@@ -86,7 +86,9 @@ class StockA:
         last_day_shou = day_df['收盘'][last_1]
         last_day_kai = day_df['开盘'][last_1]
         last_day_q = day_df['成交量'][last_1]
+        last_day_chengjiaoe = day_df['成交额'][last_1]
         last_huan_shou_lv = day_df['换手率'][last_1]
+        flow_value = last_day_chengjiaoe * 100 / last_huan_shou_lv
         last_day_price_avg = (last_day_kai + last_day_shou) / 2
 
         last_2 = last_1 - 1
@@ -136,7 +138,11 @@ class StockA:
         # 注意：该接口返回的数据只有最近一个交易日的有开盘价，其他日期开盘价为 0
         min_df = None
         try:
-            min_df = ak.stock_intraday_em(symbol=code)
+            if not self.conf.exists_minute_data(code):
+                min_df = ak.stock_intraday_em(symbol=code)
+                self.conf.save_minute_data(code, min_df)
+            else:
+                min_df = self.conf.get_minute_data(code)
         except:
             e = sys.exc_info()[0]
             # print(f"code={code}, {e}")
@@ -199,7 +205,7 @@ class StockA:
             total_q += int(q)
             sum_close += int(price * q * 100) / 100
             avg = sum_close / total_q
-            if price > avg:
+            if price > avg * 0.8:
                 min_dict[min_dict_key] = 1
             else:
                 min_dict[min_dict_key] = 0
@@ -221,7 +227,7 @@ class StockA:
         today_price_avg = (first_price + price) / 2
 
         # 用昨天换手率判断
-        huan_shou_lv = last_huan_shou_lv
+        huan_shou_lv = int(sum_close * 100 * 10000 / flow_value) / 100
 
         until_now_diff = self.get_trade_diff_mins(time_m)
         last_day_same_time_q = last_day_q * until_now_diff / self.total_trade_ellipse
@@ -229,7 +235,7 @@ class StockA:
         # 下跌不放量
         accept_q = (price > first_price and total_q < last_day_same_time_q * 1.5) \
                    or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg * 0.7
+        accept_q = accept_q and price > avg
 
         if code == debug_code:
             print(
@@ -243,7 +249,7 @@ class StockA:
                 f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
 
         # 排除换手率小于1的股票
-        if huan_shou_lv < 1 or huan_shou_lv > 15:
+        if huan_shou_lv < 3 or huan_shou_lv > 15:
             return None
 
         filter_flag = False
@@ -386,7 +392,7 @@ class StockA:
         thread_rs = list()
         thx_name = current_thread().name
         code_len = len(codes)
-        # print(f"[{thx_name}] total len: {code_len}")
+        print(f"[{thx_name}] started...: {s_date}")
         n = 0
         flag = False
         for row in codes:
@@ -466,7 +472,7 @@ class StockA:
         for i in range(1, 50):
             thread_data_dict[i] = list()
         batch_num = 1
-        batch_size = 100
+        batch_size = 50
         n = 0
         v_n = 0
 
@@ -483,10 +489,11 @@ class StockA:
                 continue
             if 'ST' in name or '退市' in name or 'N' in name or 'L' in name or 'C' in name or 'U' in name:
                 continue
-            flow_val = stock_zh_a_spot_em_df['成交额'][i]
-            # flow_val = stock_zh_a_spot_em_df['流通市值'][i]
-            # if flow_val < 10 * 100000000 or flow_val > 300 * 100000000:
-            #    continue
+            chengjiao_val = stock_zh_a_spot_em_df['成交额'][i]
+            huanshou_val = stock_zh_a_spot_em_df['换手率'][i]
+            flow_val = chengjiao_val * 100 / huanshou_val
+            if flow_val < 10 * 100000000 or flow_val > 200 * 100000000:
+                continue
             # liang_val = stock_zh_a_spot_em_df['量比'][i]
             # if liang_val <= 1:
             #     continue

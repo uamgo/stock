@@ -28,7 +28,7 @@ class StockConfig:
         self.init_config()
 
     # trading and file not exists, then return True
-    def is_trading(self, code):
+    def is_minute_data_expired(self, code):
         file_name = f"{self.minute_path}/{code}.json"
         # file need to be download if not exist, then marked trading
         if not os.path.isfile(file_name):
@@ -60,19 +60,10 @@ class StockConfig:
     def get_format_code(self, stock_code):
         return stock_code.zfill(6)
 
-    def save_minute_data(self, code, minute_df):
-        file_name = f"{self.minute_path}/{code}.json"
-        if not os.path.exists(file_name):
-            minute_df.to_json(file_name, orient='split', compression='infer', index='true')
-
-    def get_minute_data(self, code):
-        file_name = f"{self.minute_path}/{code}.json"
-        return pd.read_json(file_name, orient='split', compression='infer')
-
     def save_concept_data(self, concept_code, concept_df):
+        print(f"{concept_code} save_concept_data")
         file_name = f"{self.concept_path}/{concept_code}.json"
-        if not os.path.exists(file_name):
-            concept_df.to_json(file_name, orient='split', compression='infer', index='true')
+        concept_df.to_json(file_name, orient='split', compression='infer', index='true')
 
     def get_concept_data(self, concept_code):
         file_name = f"{self.concept_path}/{concept_code}.json"
@@ -83,9 +74,9 @@ class StockConfig:
         return os.path.exists(file_name)
 
     def save_daily_data(self, code, daily_df):
+        print(f"{code} save_daily_data")
         file_name = f"{self.daily_path}/{code}.json"
-        if not os.path.exists(file_name):
-            daily_df.to_json(file_name, orient='split', compression='infer', index='true')
+        daily_df.to_json(file_name, orient='split', compression='infer', index='true')
 
     def get_daily_data(self, code):
         file_name = f"{self.daily_path}/{code}.json"
@@ -94,6 +85,18 @@ class StockConfig:
     def exists_daily_data(self, code):
         file_name = f"{self.daily_path}/{code}.json"
         return os.path.exists(file_name)
+
+    def save_minute_data(self, code, min_df):
+        print(f"{code} save_minute_data")
+        file_name = f"{self.minute_path}/{code}.json"
+        min_df.to_json(file_name, orient='split', compression='infer', index='true')
+
+    def get_minute_data(self, code):
+        file_name = f"{self.minute_path}/{code}.json"
+        return pd.read_json(file_name, orient='split', compression='infer')
+
+    def exists_minute_data(self, code):
+        return not self.is_minute_data_expired(code)
 
     def init_path(self):
         if not os.path.isdir(self.root_path):
