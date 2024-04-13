@@ -43,7 +43,9 @@ class StockA:
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
     # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
-    def filter_by_min(self, code):
+    def filter_by_min(self, code_row):
+        code = code_row['code']
+        concept_name = code_row['concept_name']
         debug_code = self.args.code
         is_debug_end_time = self.args.is_debug
         debug_end_time = self.args.debug_end_time
@@ -401,7 +403,7 @@ class StockA:
             if n % 200 == 0:
                 now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
                 print(f"[{thx_name}] finished {n}/{code_len} with time: {now}")
-            row_code = self.filter_by_min(code)
+            row_code = self.filter_by_min(row)
             if row_code is not None:
                 row['policy_type'] = row_code[1]
                 row['score'] = row_code[2]
@@ -443,9 +445,11 @@ class StockA:
             for ind in stock_board_concept_name_em_df.index:
                 concept_name = stock_board_concept_name_em_df["板块名称"][ind]
                 concept_code = stock_board_concept_name_em_df["板块代码"][ind]
+                concept_rank = stock_board_concept_name_em_df["排名"][ind]
                 # 找到所有符合条件的概念股并去重
                 if not self.conf.exists_concept_data(concept_code):
                     concept_tmp_df = ak.stock_board_concept_cons_em(symbol=concept_name)
+                    concept_tmp_df = concept_tmp_df.assign(concept_name=f"{concept_rank}-{concept_name}")
                     self.conf.save_concept_data(concept_code, concept_tmp_df)
                 else:
                     concept_tmp_df = self.conf.get_concept_data(concept_code)
@@ -465,6 +469,7 @@ class StockA:
             stock_zh_a_spot_em_df = stock_df
         else:
             stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
+            stock_zh_a_spot_em_df = stock_zh_a_spot_em_df.assign(concept_name='all')
         # not_st_df = stock_zh_a_spot_em_df.loc['ST' not in stock_zh_a_spot_em_df['名称']
         # and '退市' not in stock_zh_a_spot_em_df['名称'] and 'N' not in stock_zh_a_spot_em_df['名称'], ['名称']]
         thread_data_dict = dict()
@@ -518,6 +523,8 @@ class StockA:
             row['total_val'] = total_val
             row['flow_val'] = flow_val
             row['zhang'] = zhang
+            row['concept_name'] = stock_zh_a_spot_em_df['concept_name'][i]
+
             thread_data_dict[batch_num].append(row)
             rape_list = list()
             rape_list.append(thread_data_dict[batch_num])
@@ -548,7 +555,7 @@ class StockA:
         for idx, row in enumerate(p_list):
             code = row['code']
             print(
-                f"""{str(idx+1)}, {code} , name={row['name']}, 市盈率-动态={row['shi_val']}, score={row['score']}, 涨跌幅={row['zhang']}""")
+                f"""{str(idx+1)}, {code} , name={row['name']}, 概念板块={row['concept_name']}, score={row['score']}, 涨跌幅={row['zhang']}""")
             print(stock.to_link(code))
             if idx >= 4:
                 print(f"\nTop 5 from {len(p_list)} stocks")
