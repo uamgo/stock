@@ -5,6 +5,7 @@ import time
 import datetime
 import sys
 import pandas as pd
+import pandas_ta as ta
 import math
 import exchange_calendars as xcals
 import argparse
@@ -155,8 +156,6 @@ class StockA:
 
         max_b_q = 0
         max_s_q = 0
-        size = min_df['成交价'].size
-        i = 0
         cnt = 0
         sum_close = 0
         cnt_hight = 0
@@ -167,25 +166,22 @@ class StockA:
         first_price = 0
         time_m = None
 
+        min_df = min_df[min_df["时间"] >= '09:30:00']
+        size = len(min_df)
         min_dict = {}
-        while i < size - 1:
-            i += 1
-            time_m = min_df["时间"][i]
-            until_now_diff = self.get_time_diff_mins('09:30', time_m)
+        for i in range(size):
+            time_m = min_df["时间"].iloc[i]
             min_dict_key = time_m[:5]
-            # 9:30 前的数据不在统计范围内
-            if until_now_diff < 0:
-                continue
             # 获取开盘价
             if first_price == 0:
-                first_price = min_df['成交价'][i]
+                first_price = min_df['成交价'].iloc[i]
 
-            price = min_df['成交价'][i]
+            price = min_df['成交价'].iloc[i]
 
             if price == 0:
                 continue
             max_price = max(max_price, price)
-            q = min_df['手数'][i]
+            q = min_df['手数'].iloc[i]
             # if code == '002360':
             #     print(f"price: {price} hour: {min_df['时间'][i]} q: {q}")
             if int(q) == 0:
@@ -193,7 +189,7 @@ class StockA:
 
             cnt += 1
 
-            direct = min_df['买卖盘性质'][i]
+            direct = min_df['买卖盘性质'].iloc[i]
             is_buy = (direct == '买盘')
             is_sell = (direct == '卖盘')
 
@@ -228,7 +224,7 @@ class StockA:
         avg = sum_close / total_q
         today_price_avg = (first_price + price) / 2
 
-        # 用昨天换手率判断
+        # 计算换手率
         huan_shou_lv = int(sum_close * 100 * 10000 / flow_value) / 100
 
         until_now_diff = self.get_trade_diff_mins(time_m)
@@ -483,8 +479,6 @@ class StockA:
 
         for i in stock_zh_a_spot_em_df.index:
             code = self.conf.get_format_code(str(stock_zh_a_spot_em_df['代码'][i]))
-            # print("----------code--------")
-            # print(code)
             n += 1
             if code in self.black_list:
                 continue

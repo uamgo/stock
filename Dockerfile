@@ -6,6 +6,7 @@ RUN git clone https://github.com/uamgo/stock.git
 WORKDIR /app/stock
 RUN pip3 install akshare --upgrade -i https://pypi.tuna.tsinghua.edu.cn/simple
 RUN pip3 install exchange_calendars
+RUN pip3 install pandas_ta
 #apt-get源 使用163的源
 RUN touch /etc/apt/sources.list
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak && \
