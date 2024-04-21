@@ -57,6 +57,38 @@ class StockConfig:
 
         return True
 
+    def is_tradingNow(self):
+        now_9_30 = datetime.datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+        now_11_30 = datetime.datetime.now().replace(hour=11, minute=30, second=0, microsecond=0)
+        now_13_00 = datetime.datetime.now().replace(hour=13, minute=0, second=0, microsecond=0)
+        now_15_00 = datetime.datetime.now().replace(hour=15, minute=0, second=0, microsecond=0)
+        now_time = datetime.datetime.now()
+        if self.is_trading_today and now_9_30 <= now_time <= now_11_30 and now_13_00 <= now_time <=now_15_00:
+            return True
+
+    def to_datetime(self, m_time):
+        if '-' in m_time:
+            tmp_date = m_time[:10].split('-')
+            t_year = int(tmp_date[0])
+            t_mon = int(tmp_date[1])
+            t_day = int(tmp_date[2])
+            m_time_a = m_time[11:].split(':')
+            t_hour = int(m_time_a[0])
+            t_min = int(m_time_a[1])
+            t_sec = int(m_time_a[2])
+        else:
+            t_now = datetime.datetime.now()
+            t_year = t_now.year
+            t_mon = t_now.month
+            t_day = t_now.day
+            m_time_a = m_time.split(':')
+            t_hour = int(m_time_a[0])
+            t_min = int(m_time_a[1])
+            t_sec = int(m_time_a[2])
+        return datetime.datetime.now().replace(
+            year=t_year,month=t_mon,day=t_day,
+            hour=t_hour, minute=t_min, second=t_sec, microsecond=0)
+
     def get_format_code(self, stock_code):
         return stock_code.zfill(6)
 
@@ -87,9 +119,10 @@ class StockConfig:
         return os.path.exists(file_name)
 
     def save_minute_data(self, code, min_df):
-        print(f"{code} save_minute_data")
-        file_name = f"{self.minute_path}/{code}.json"
-        min_df.to_json(file_name, orient='split', compression='infer', index='true')
+        if not self.is_tradingNow():
+            print(f"{code} save_minute_data")
+            file_name = f"{self.minute_path}/{code}.json"
+            min_df.to_json(file_name, orient='split', compression='infer', index='true')
 
     def get_minute_data(self, code):
         file_name = f"{self.minute_path}/{code}.json"

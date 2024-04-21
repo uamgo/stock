@@ -20,7 +20,7 @@ class StockA:
     parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time',
                         default=False)
     parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False,
-                        help='Top n concepts, 20 by default without -a', default="20")
+                        help='Top n concepts, 20 by default without -a', default="10")
     parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
                         help='remove last day which is included in fenshi', default=False)
     parser.add_argument('-s', '--min_score', type=int, metavar='', required=False,
@@ -30,6 +30,7 @@ class StockA:
 
     args = parser.parse_args()
     conf = config.StockConfig()
+    is_trading_now = conf.is_tradingNow()
 
     black_list = ['600865']
     policies = [0, 0b1, 0b10, 0b100, 0b1000, 0b10000, 0b100000]
@@ -55,7 +56,7 @@ class StockA:
         if debug_code != '0' and code != debug_code:
             return None
         # 返回： 股票代码
-        row_code = [code, 0, 0]
+        row_code = {}
         # 获取前一日价格
         end = self.time_fmt(1)
         start = self.time_fmt(60)
@@ -75,239 +76,50 @@ class StockA:
             # print(f"No daily data with code={code}")
             return None
 
-        macd = day_df.ta.macd(close='收盘')['MACDh_12_26_9']
-        if macd.iloc[-1] - macd.iloc[-2] < 0:
+        macd_daily = day_df.ta.macd(close='收盘')['MACDh_12_26_9']
+        if macd_daily.iloc[-1] < macd_daily.iloc[-2] or macd_daily.iloc[-1] < 0:
+        #if macd_daily.iloc[-1] < macd_daily.iloc[-2]:
             return None
 
-        # 如果今天不是交易日，那么删除最后一个交易日的日数据，因为分时数据为最后一个交易日数据
-        last_day_date = day_df["日期"][len(day_df) - 1]
-        if np.issubdtype(type(last_day_date), np.int64):
-            tmp_last_day_date = datetime.datetime.fromtimestamp(last_day_date/1000)
-        else:
-            tmp_last_day_date = day_df["日期"][len(day_df) - 1]
-        last_day_date_str = tmp_last_day_date.strftime("%Y-%m-%d")
-        if last_day_date_str == self.conf.today_str:
-            day_df.drop([len(day_df) - 1], inplace=True)
-
-        last_1 = day_df['收盘'].size - 1
-        last_day_shou = day_df['收盘'][last_1]
-        last_day_kai = day_df['开盘'][last_1]
-        last_day_q = day_df['成交量'][last_1]
-        last_day_chengjiaoe = day_df['成交额'][last_1]
-        last_huan_shou_lv = day_df['换手率'][last_1]
-        flow_value = last_day_chengjiaoe * 100 / last_huan_shou_lv
-        last_day_price_avg = (last_day_kai + last_day_shou) / 2
-
-        last_2 = last_1 - 1
-        last_day2_shou = day_df['收盘'][last_2]
-        last_day2_kai = day_df['开盘'][last_2]
-        last_day2_q = day_df['成交量'][last_2]
-        last_2_huan_shou_lv = day_df['换手率'][last_2]
-        last_day2_price_avg = (last_day2_kai + last_day2_shou) / 2
-
-        last_2day_price_avg_max = max(last_day_price_avg, last_day2_price_avg)
-
-        last_3 = last_2 - 1
-        last_day3_shou = day_df['收盘'][last_3]
-        last_day3_kai = day_df['开盘'][last_3]
-        last_day3_price_avg = (last_day3_kai + last_day3_shou) / 2
-
-        # 20 日均线
-        day_df['avg20'] = day_df['收盘'].rolling(20).mean()
-        if day_df['avg20'][last_1] is None or last_day_shou < day_df['avg20'][last_1]:
+        min_df_hist = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start, end_date=end, period="60", adjust="")
+        min_df_hist['d_time_idx'] = min_df_hist.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
+        min_df_hist.set_index('d_time_idx', inplace=True)
+        min_df_hist = pd.DataFrame(min_df_hist, columns=['收盘'])
+        macd_min_hist = min_df_hist.ta.macd(close='收盘')['MACDh_12_26_9']
+        if macd_min_hist.iloc[-1] - macd_min_hist.iloc[-2] < 0:
             return None
-        last_avg20 = day_df['avg20'][last_1]
-        day_df['avg'] = day_df['开盘'].rolling(window=1).apply(self.avg, args=(day_df['收盘'],))
-        day_df['trend_2'] = day_df['avg'].rolling(2).apply(lambda a: self.avg_diff(a))
-        if day_df['trend_2'][last_1] is None:
-            print(f"last one in trend_2 is None!")
-            return None
-        day_df['trend_3'] = day_df['trend_2'].rolling(2).sum()
-        if day_df['trend_3'][last_1] is None:
-            print(f"last one in trend_3 is None!")
-            return None
-        day_df['box_up'] = day_df['最高'].rolling(3).max()
-        if day_df['box_up'][last_1] is None:
-            print(f"last one in box_up is None!")
-            return None
-        if code == debug_code:
-            print(f"is_debug={is_debug_end_time}, debug_end_time={debug_end_time}")
-            print("----avg----")
-            print(day_df['avg'])
-            print("----trend_2----")
-            print(day_df['trend_2'])
-            print("----trend_3----")
-            print(day_df['trend_3'])
-
-        # 注意：该接口返回的数据只有最近一个交易日的有开盘价，其他日期开盘价为 0
-        min_df = None
-        try:
-            min_df = ak.stock_intraday_em(symbol=code)
-            #if not self.conf.exists_minute_data(code):
-            #    min_df = ak.stock_intraday_em(symbol=code)
-            #    self.conf.save_minute_data(code, min_df)
-            #else:
-            #    min_df = self.conf.get_minute_data(code)
-        except:
-            e = sys.exc_info()[0]
-            # print(f"code={code}, {e}")
-            return None
-        if min_df.size == 0:
-            # print(f"no data for ak.stock_intraday_em with code={code}")
-            return None
-
-        max_b_q = 0
-        max_s_q = 0
-        cnt = 0
-        sum_close = 0
-        cnt_hight = 0
-        total_q = 0
-        buy_q = 0
-        sell_q = 0
-        max_price = 0
-        first_price = 0
-        time_m = None
-
-        min_df = min_df[min_df["时间"] >= '09:30:00']
-        size = len(min_df)
-        min_dict = {}
-        for i in range(size):
-            time_m = min_df["时间"].iloc[i]
-            min_dict_key = time_m[:5]
-            # 获取开盘价
-            if first_price == 0:
-                first_price = min_df['成交价'].iloc[i]
-
-            price = min_df['成交价'].iloc[i]
-
-            if price == 0:
-                continue
-            max_price = max(max_price, price)
-            q = min_df['手数'].iloc[i]
-            # if code == '002360':
-            #     print(f"price: {price} hour: {min_df['时间'][i]} q: {q}")
-            if int(q) == 0:
-                continue
-
-            cnt += 1
-
-            direct = min_df['买卖盘性质'].iloc[i]
-            is_buy = (direct == '买盘')
-            is_sell = (direct == '卖盘')
-
-            if is_buy:
-                buy_q += q
-                max_b_q = max(max_b_q, q)
-            elif is_sell:
-                sell_q += q
-                max_s_q = max(max_s_q, q)
-
-            total_q += int(q)
-            sum_close += int(price * q * 100) / 100
-            avg = sum_close / total_q
-            if price > avg * 0.8:
-                min_dict[min_dict_key] = 1
-            else:
-                min_dict[min_dict_key] = 0
+        m_tmp_min_df = min_df_hist
+        if self.is_trading_now:
             try:
-                # print(f"sum_close/total_q={sum_close}/{total_q}")
-                if price > (int(sum_close * 100) / int(total_q)) / 100:
-                    cnt_hight += 1
+                min_df = ak.stock_intraday_em(symbol=code)
             except:
-                print(f"sum_close/total_q={sum_close}/{total_q}")
+                e = sys.exc_info()[0]
+                # print(f"code={code}, {e}")
+                return None
+            if min_df.size == 0:
+                # print(f"no data for ak.stock_intraday_em with code={code}")
+                return None
+            min_df['d_time_idx'] = min_df.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
+            min_df.set_index('d_time_idx', inplace=True)
+            tmp_min_df = min_df.resample('H').agg({
+                '成交价': 'last'
+            }).dropna()
+            tmp_min_df.rename(columns={'成交价': '收盘'})
+            m_tmp_min_df = m_tmp_min_df._append(tmp_min_df, ignore_index=False, verify_integrity=True, sort=True)
 
-            # 如果开启了昨日回测模式，根据debug_end_time时间决定回测到的时间
-            if is_debug_end_time:
-                if self.get_time_diff_mins(debug_end_time, time_m) > 0:
-                    break
+            macd_m_min_hist = m_tmp_min_df.ta.macd(close='收盘')['MACDh_12_26_9']
+            if macd_m_min_hist.iloc[-2] < macd_m_min_hist.iloc[-3]:
+                return None
 
-        min_dict_cnt = len(min_dict)
-        min_dict_up_cnt = sum(min_dict.values())
-        avg = sum_close / total_q
-        today_price_avg = (first_price + price) / 2
+        sma_day = m_tmp_min_df.ta.sma(close='收盘', length=20)
+        avg20 = sma_day.iloc[-1]
+        price = m_tmp_min_df['收盘'][-1]
 
-        # 计算换手率
-        huan_shou_lv = int(sum_close * 100 * 10000 / flow_value) / 100
-
-        until_now_diff = self.get_trade_diff_mins(time_m)
-        last_day_same_time_q = last_day_q * until_now_diff / self.total_trade_ellipse
-
-        # 下跌不放量
-        accept_q = (price > first_price * 0.7 and total_q < last_day_same_time_q * 1.5) \
-                   or (price <= first_price and total_q < last_day_same_time_q)
-        accept_q = accept_q and price > avg
-
-        if code == debug_code:
-            print(
-                f"code={code}, total_q={total_q}, last_day_q={last_day_q}, price={price}, last_day_shou={last_day_shou}, first_price={first_price}, today_price_avg={today_price_avg}")
-            print(
-                f"code={code}, last_2day_price_avg_max={last_2day_price_avg_max}, last_day_price_avg={last_day_price_avg}, last_day2_price_avg={last_day2_price_avg}")
-            print(
-                f"code={code}, accept_q={accept_q}, today_price_avg > last_2day_price_avg_max ={today_price_avg > last_2day_price_avg_max}, last_day_same_time_q={last_day_same_time_q}")
-            # print(f"code={code}, huan_shou_lv={huan_shou_lv}, zong_gu_ben={zong_gu_ben}")
-            print(
-                f"code={code}, huan_shou_lv={huan_shou_lv}, accept_q={accept_q}, price <= last_day_price_avg and total_q < last_day_q ={price <= last_day_price_avg and total_q < last_day_q}")
-
-        # 排除换手率小于1的股票
-        if huan_shou_lv < 1 or huan_shou_lv > 15:
-            return None
-
-        filter_flag = False
-        row_code_tmp = 0
-        assigned_score = 0
-
-        # policy 五星 : 一、箱体突破（最高价高于箱体）；二、无明显放量出
-        if max_price > day_df['box_up'][last_1]:
-            # 条件：(买入量大于卖出量 || 当前总成交量小于昨日成交量的1.5倍) && 当前价格大于昨日收盘价 && 今天平均价大于前两天平均价
-            if (buy_q > sell_q or accept_q) and accept_q and today_price_avg > last_2day_price_avg_max:
-                filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[5]
-                assigned_score = max(assigned_score, self.get_score(price, avg))
-
-        # policy 四星: 一、和前一日同一时间相比缩量；二、靠近20日均线
-        if total_q < last_day_same_time_q and last_avg20 > price * 0.95 and last_avg20 < price * 1.05:
-            # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
-            if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
-                filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[4]
-                assigned_score = max(assigned_score, self.get_score(price, last_day_price_avg))
-
-        # policy 三星: 一、连续三天上涨突破（收盘+开盘）/2；二、无放量出逃
-        if day_df['trend_3'][last_1] >= 1:
-            # 条件：当前成交量小于昨天的1.5倍 && 当前平均价大于昨日平均价 && 当日开盘价大于昨天平均价
-            if accept_q and price > last_day_price_avg and today_price_avg > last_day_price_avg and first_price > last_day_price_avg:
-                filter_flag = True
-                row_code_tmp = row_code_tmp | self.policies[3]
-                if assigned_score == 0:
-                    assigned_score = self.get_score(price, avg)
-
-        # policy 一星: 一、连续三天创新低；二、放量资金抄底
-        if day_df['trend_3'][last_1] <= -1:
-            # 最大买单小于最大买单的50%；当前价格高于移动平均价；买单数量大约
-            filter_flag = (max_s_q < max_b_q * 0.5 and price > avg and buy_q > sell_q and cnt_hight > cnt * 0.6)
-            if filter_flag:
-                row_code_tmp = row_code_tmp | self.policies[2]
-                if assigned_score == 0:
-                    assigned_score = self.get_score(price, avg)
-
-        if min_dict_up_cnt == 0:
-            min_dict_up_cnt = 1
-        mins_score = math.trunc(self.get_score(min_dict_cnt, min_dict_up_cnt) / 10) * 10
-        q_score = math.trunc(last_day_q * 100 / total_q) / 100
-        assigned_score = mins_score + q_score
-
-        if assigned_score < args_min_score:
-            # print(f"code={code}, assigned_score is None")
-            return None
-
-        row_code[1] = row_code_tmp * 100
-        row_code[2] = assigned_score
-        if filter_flag:
-            print(
-                f"{code} , max_s_q={max_s_q}, max_b_q={max_b_q}, cnt_hight={cnt_hight}, cnt={cnt}, total_q={total_q}, last_day_q={last_day_q}, price={price}, avg={avg}, last_day_shou={last_day_shou}")
-            return row_code
-
-        return None
+        row_code['code'] = code
+        row_code['policy_type'] = 900
+        row_code['score'] = self.get_score(price, avg20)
+        print(f"{row_code}")
+        return row_code
 
     def get_trade_diff_mins(self, end_time):
         trade_diff_09_30 = self.get_time_diff_mins('09:30', end_time)
@@ -403,8 +215,7 @@ class StockA:
                 print(f"[{thx_name}] finished {n}/{code_len} with time: {now}")
             row_code = self.filter_by_min(row)
             if row_code is not None:
-                row['policy_type'] = row_code[1]
-                row['score'] = row_code[2]
+                row.update(row_code)
                 thread_rs.append(row)
                 flag = True
                 print(f'[{thx_name}] {row}')
@@ -504,7 +315,7 @@ class StockA:
 
             # 涨跌幅 小于 5%
             zhang = stock_zh_a_spot_em_df['涨跌幅'][i]
-            if zhang >= 5:
+            if zhang >= 6:
                 continue
 
             v_n += 1
@@ -564,32 +375,15 @@ if __name__ == "__main__":
     start_ts = time.time()
     stock = StockA()
     rs = stock.run()
-    # print(f"rs type = {type(rs)}") 
+    # print(f"rs type = {type(rs)}")
     rs.sort(reverse=True, key=lambda r: r['score'])
+    code_set = set()
     for idx, row in enumerate(rs):
-        print(row)
-    print(f"\nTotal: {len(rs)} stocks")
-    p_list = [[], [], [], [], []]
-    p_list_tips = ['箱体突破策略', '靠近20日生命线', '连续3日上升趋势', '连续三天创新低反抽', None]
-    important_list = []
-    for idx, row in enumerate(rs):
-        policy_type = row['policy_type']
-        policy_type_tmp = math.trunc(policy_type / 100)
-        if (policy_type_tmp & stock.policies[5]) != 0 and (policy_type_tmp & stock.policies[4]) != 0:
-            important_list.append(row)
-            continue
-        for i in range(5, 0, -1):
-            if (math.trunc(policy_type / 100) & stock.policies[i]) != 0:
-                p_list[5 - i].append(row)
-                break
+        if not row['code'] in code_set:
+            code_set.add(row['code'])
+            print(row)
 
+    print(f"\nTotal: {len(code_set)} stocks")
     end_ts = time.time()
-
-    print("\n~~~~~~~~~~~\n")
-    stock.print_pocicy(important_list[:5], f"*** 重点推荐的股票（同时符合箱体突破 + 靠近20日均线） ***")
-
-    for i in range(0, 5):
-        if p_list_tips[i] is not None:
-            stock.print_pocicy(p_list[i], f"{p_list_tips[i]}")
 
     print("\nElapse: %.2f s,  %s" % ((end_ts - start_ts), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
