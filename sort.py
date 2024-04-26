@@ -75,21 +75,36 @@ class StockA:
         if len(day_df) == 0:
             # print(f"No daily data with code={code}")
             return None
+        last_huan_shou_price = day_df['收盘'].iloc[-1]
+        last_day_chengjiaoe = day_df['成交额'].iloc[-1]
+        last_huan_shou_lv = day_df['换手率'].iloc[-1]
+        flow_value = last_day_chengjiaoe * 100 / last_huan_shou_lv
 
-        macd_daily = day_df.ta.macd(close='收盘')['MACDh_12_26_9']
-        if macd_daily.iloc[-1] < macd_daily.iloc[-2] or macd_daily.iloc[-1] < 0:
-        #if macd_daily.iloc[-1] < macd_daily.iloc[-2]:
+        if last_huan_shou_lv < 1.5:
+            return None
+        try:
+            if not np.issubdtype(type(day_df['收盘'].iloc[0]), np.float64):
+                return None
+            macd_daily = day_df.ta.macd(close='收盘')['MACDh_12_26_9']
+            # if macd_daily.iloc[-1] < macd_daily.iloc[-2] or macd_daily.iloc[-1] < 0:
+            if macd_daily.iloc[-1] < macd_daily.iloc[-2]:
+                return None
+        except:
+            e = sys.exc_info()[0]
+            print(f"code={code}, {e}")
             return None
 
         min_df_hist = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start, end_date=end, period="60", adjust="")
+        last_min_df_day = min_df_hist['时间'].iloc[-1][:10]
         min_df_hist['d_time_idx'] = min_df_hist.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
         min_df_hist.set_index('d_time_idx', inplace=True)
         min_df_hist = pd.DataFrame(min_df_hist, columns=['收盘'])
         macd_min_hist = min_df_hist.ta.macd(close='收盘')['MACDh_12_26_9']
-        if macd_min_hist.iloc[-1] - macd_min_hist.iloc[-2] < 0:
-            return None
+
         m_tmp_min_df = min_df_hist
-        if self.is_trading_now:
+        price = min_df_hist['收盘'].iloc[-1]
+
+        if self.conf.is_trading_today and last_min_df_day != self.conf.today_str and self.conf.after_kai_pan():
             try:
                 min_df = ak.stock_intraday_em(symbol=code)
             except:
@@ -99,21 +114,41 @@ class StockA:
             if min_df.size == 0:
                 # print(f"no data for ak.stock_intraday_em with code={code}")
                 return None
+            min_df = min_df[min_df["时间"] >= '09:30:00']
+            price = min_df['成交价'].iloc[-1]
+            zhang = int(10000 * (price - last_huan_shou_price) / last_huan_shou_price) / 100
+            if zhang > 5:
+                return None
+            row_code['zhang'] = zhang
             min_df['d_time_idx'] = min_df.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
             min_df.set_index('d_time_idx', inplace=True)
             tmp_min_df = min_df.resample('H').agg({
                 '成交价': 'last'
             }).dropna()
-            tmp_min_df.rename(columns={'成交价': '收盘'})
+            tmp_min_df = tmp_min_df.rename(columns={'成交价': '收盘'})
             m_tmp_min_df = m_tmp_min_df._append(tmp_min_df, ignore_index=False, verify_integrity=True, sort=True)
 
             macd_m_min_hist = m_tmp_min_df.ta.macd(close='收盘')['MACDh_12_26_9']
-            if macd_m_min_hist.iloc[-2] < macd_m_min_hist.iloc[-3]:
+            if macd_m_min_hist.iloc[-1] < macd_m_min_hist.iloc[-2]:
+                return None
+
+            min_total_e = sum(min_df.apply(lambda x: x['成交价'] * x['手数'], axis=1))
+            # 计算换手率
+            huan_shou_lv = int(min_total_e * 100 * 10000 / flow_value) / 100
+            if huan_shou_lv < 1.5:
+                return None
+            price = min_df['成交价'][-1]
+            if price < max(day_df['收盘'].iloc[-1], day_df['收盘'].iloc[-2]):
+                return None
+            if max(min_df['成交价']) < max(day_df['最高'].iloc[-1], day_df['最高'].iloc[-2]):
+                return None
+
+        else:
+            if macd_min_hist.iloc[-1] < macd_min_hist.iloc[-2]:
                 return None
 
         sma_day = m_tmp_min_df.ta.sma(close='收盘', length=20)
         avg20 = sma_day.iloc[-1]
-        price = m_tmp_min_df['收盘'][-1]
 
         row_code['code'] = code
         row_code['policy_type'] = 900
@@ -314,9 +349,9 @@ class StockA:
                 continue
 
             # 涨跌幅 小于 5%
-            zhang = stock_zh_a_spot_em_df['涨跌幅'][i]
-            if zhang >= 6:
-                continue
+            # zhang = stock_zh_a_spot_em_df['涨跌幅'][i]
+            # if zhang >= 6:
+            #    continue
 
             v_n += 1
 
@@ -329,7 +364,7 @@ class StockA:
             row['shi_val'] = shi_val
             row['total_val'] = total_val
             row['flow_val'] = flow_val
-            row['zhang'] = zhang
+            # row['zhang'] = zhang
             row['concept_name'] = stock_zh_a_spot_em_df['concept_name'][i]
 
             thread_data_dict[batch_num].append(row)

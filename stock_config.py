@@ -63,8 +63,12 @@ class StockConfig:
         now_13_00 = datetime.datetime.now().replace(hour=13, minute=0, second=0, microsecond=0)
         now_15_00 = datetime.datetime.now().replace(hour=15, minute=0, second=0, microsecond=0)
         now_time = datetime.datetime.now()
-        if self.is_trading_today and now_9_30 <= now_time <= now_11_30 and now_13_00 <= now_time <=now_15_00:
-            return True
+        return self.is_trading_today and now_9_30 <= now_time <= now_15_00
+
+    def after_kai_pan(self):
+        now_9_30 = datetime.datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+        now_time = datetime.datetime.now()
+        return now_time > now_9_30
 
     def to_datetime(self, m_time):
         if '-' in m_time:
