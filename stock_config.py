@@ -3,6 +3,7 @@ import json
 import exchange_calendars as xcals
 import datetime
 import pandas as pd
+import numpy as np
 
 
 class StockConfig:
@@ -56,6 +57,55 @@ class StockConfig:
             return False
 
         return True
+
+    def get_trading_pecentage(self):
+        mins = self.get_trading_mins()
+        return int(mins * 100 / 240) / 100
+
+    def get_trading_mins(self):
+        if not self.is_trading_today:
+            return 240
+
+        now_9_30 = datetime.datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+        now_13_00 = datetime.datetime.now().replace(hour=13, minute=0, second=0, microsecond=0)
+        now_t = datetime.datetime.now()
+
+        diff_9_30 = self.get_time_diff_mins(now_9_30, now_t)
+        if diff_9_30 <= 0:
+            return 0
+        if diff_9_30 <= 120:
+            return diff_9_30
+        if diff_9_30 >= 120:
+            return 120
+        diff_13_00 = self.get_time_diff_mins(now_13_00, now_t)
+        if diff_13_00 <= 0:
+            return 120
+        if diff_13_00 <= 120:
+            return 120 + diff_9_30
+        if diff_13_00 >= 120:
+            return 240
+
+    def get_score(self, e_v, s_v):
+        return int(100 * (e_v - s_v) / s_v)
+
+    def get_time_diff_mins(self, start_time, end_time):
+        if np.issubdtype(type(start_time), np.str):
+            s_time_split = start_time.split(':')
+            s_hour = int(s_time_split[0])
+            s_min = int(s_time_split[1])
+        else:
+            s_hour = start_time.hour
+            s_min = start_time.minute
+
+        if np.issubdtype(type(end_time), np.str):
+            e_time_split = end_time.split(':')
+            e_hour = int(e_time_split[0])
+            e_min = int(e_time_split[1])
+        else:
+            e_hour = end_time.hour
+            e_min = end_time.minute
+
+        return (e_hour - s_hour) * 60 + e_min - s_min
 
     def is_tradingNow(self):
         now_9_30 = datetime.datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)

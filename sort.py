@@ -78,6 +78,7 @@ class StockA:
         last_huan_shou_price = day_df['收盘'].iloc[-1]
         last_day_chengjiaoe = day_df['成交额'].iloc[-1]
         last_huan_shou_lv = day_df['换手率'].iloc[-1]
+        last_total_q = day_df['成交量'].iloc[-1]
         flow_value = last_day_chengjiaoe * 100 / last_huan_shou_lv
 
         if last_huan_shou_lv < 1.5:
@@ -96,6 +97,7 @@ class StockA:
 
         min_df_hist = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start, end_date=end, period="60", adjust="")
         last_min_df_day = min_df_hist['时间'].iloc[-1][:10]
+        total_min_q = min_df_hist['成交量'].iloc[-1] + min_df_hist['成交量'].iloc[-2] + min_df_hist['成交量'].iloc[-3] +min_df_hist['成交量'].iloc[-4]
         min_df_hist['d_time_idx'] = min_df_hist.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
         min_df_hist.set_index('d_time_idx', inplace=True)
         min_df_hist = pd.DataFrame(min_df_hist, columns=['收盘'])
@@ -129,7 +131,7 @@ class StockA:
             m_tmp_min_df = m_tmp_min_df._append(tmp_min_df, ignore_index=False, verify_integrity=True, sort=True)
 
             macd_m_min_hist = m_tmp_min_df.ta.macd(close='收盘')['MACDh_12_26_9']
-            if macd_m_min_hist.iloc[-1] < macd_m_min_hist.iloc[-2]:
+            if macd_m_min_hist.iloc[-1] < macd_m_min_hist.iloc[-2] * 0.5:
                 return None
 
             min_total_e = sum(min_df.apply(lambda x: x['成交价'] * x['手数'], axis=1))
@@ -137,22 +139,33 @@ class StockA:
             huan_shou_lv = int(min_total_e * 100 * 10000 / flow_value) / 100
             if huan_shou_lv < 1.5:
                 return None
-            price = min_df['成交价'][-1]
-            if price < max(day_df['收盘'].iloc[-1], day_df['收盘'].iloc[-2]):
-                return None
-            if max(min_df['成交价']) < max(day_df['最高'].iloc[-1], day_df['最高'].iloc[-2]):
-                return None
 
+            #if price < max(day_df['收盘'].iloc[-1], day_df['收盘'].iloc[-2]):
+            #    return None
+            #if max(min_df['成交价']) < max(day_df['最高'].iloc[-1], day_df['最高'].iloc[-2]):
+            #    return None
+
+            last_1_day_avg = (day_df['开盘'].iloc[-1] + day_df['收盘'].iloc[-1]) / 2
+            last_2_day_avg = (day_df['开盘'].iloc[-2] + day_df['收盘'].iloc[-2]) / 2
+            today_avg = (min_df['成交价'][0] + min_df['成交价'][-1]) / 2
+            if today_avg < max(last_1_day_avg, last_2_day_avg):
+                return None
+            total_q = sum(min_df['手数'])
+            score = self.conf.get_score(last_total_q * self.conf.get_trading_pecentage(), total_q)
         else:
             if macd_min_hist.iloc[-1] < macd_min_hist.iloc[-2]:
                 return None
-
-        sma_day = m_tmp_min_df.ta.sma(close='收盘', length=20)
-        avg20 = sma_day.iloc[-1]
+            sma_day = m_tmp_min_df.ta.sma(close='收盘', length=20)
+            avg20 = sma_day.iloc[-1]
+            # score = self.get_score(price, avg20)
+            #
+            # if self.conf.last_trade_day_ts
+            # score = self.conf.get_score(day_df['成交量'].iloc[-2], day_df['成交量'].iloc[-1])
+            score = self.conf.get_score(day_df['成交量'].iloc[-1], total_min_q)
 
         row_code['code'] = code
         row_code['policy_type'] = 900
-        row_code['score'] = self.get_score(price, avg20)
+        row_code['score'] = score
         print(f"{row_code}")
         return row_code
 
