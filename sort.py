@@ -153,15 +153,36 @@ class StockA:
             total_q = sum(min_df['手数'])
             score = self.conf.get_score(last_total_q * self.conf.get_trading_pecentage(), total_q)
         else:
+            price = m_tmp_min_df['收盘'].iloc[-1]
             if macd_min_hist.iloc[-1] < macd_min_hist.iloc[-2]:
                 return None
             sma_day = m_tmp_min_df.ta.sma(close='收盘', length=20)
             avg20 = sma_day.iloc[-1]
-            # score = self.get_score(price, avg20)
-            #
-            # if self.conf.last_trade_day_ts
-            # score = self.conf.get_score(day_df['成交量'].iloc[-2], day_df['成交量'].iloc[-1])
-            score = self.conf.get_score(day_df['成交量'].iloc[-1], total_min_q)
+
+            if np.issubdtype(type(day_df['日期'].iloc[-1]), np.int64):
+                loc_ts = time.localtime(day_df['日期'].iloc[-1] / 1000)
+                loc_ts_str = f"{loc_ts.tm_year}-{'{:02d}'.format(loc_ts.tm_mon)}-{'{:02d}'.format(loc_ts.tm_mday)}"
+            else:
+                tmp_date = day_df['日期'].iloc[-1]
+                loc_ts_str = f"{tmp_date.year}-{'{:02d}'.format(tmp_date.month)}-{'{:02d}'.format(tmp_date.day)}"
+            if self.conf.last_trade_day_str != loc_ts_str:
+                score = self.conf.get_score(day_df['成交量'].iloc[-1], total_min_q)
+                last_huan_shou_price = day_df['收盘'].iloc[-1]
+                today_avg = (m_tmp_min_df['收盘'].iloc[-1] + m_tmp_min_df['收盘'].iloc[-4]) / 2
+                last_1_day_avg = (day_df['开盘'].iloc[-1] + day_df['收盘'].iloc[-1]) / 2
+                last_2_day_avg = (day_df['开盘'].iloc[-2] + day_df['收盘'].iloc[-2]) / 2
+            else:
+                score = self.conf.get_score(day_df['成交量'].iloc[-2], day_df['成交量'].iloc[-1])
+                last_huan_shou_price = day_df['收盘'].iloc[-2]
+                today_avg = (day_df['开盘'].iloc[-1] + day_df['收盘'].iloc[-1]) / 2
+                last_1_day_avg = (day_df['开盘'].iloc[-2] + day_df['收盘'].iloc[-2]) / 2
+                last_2_day_avg = (day_df['开盘'].iloc[-3] + day_df['收盘'].iloc[-3]) / 2
+
+            if today_avg < max(last_1_day_avg, last_2_day_avg):
+                return None
+            zhang = int(10000 * (price - last_huan_shou_price) / last_huan_shou_price) / 100
+            if zhang > 5:
+                return None
 
         row_code['code'] = code
         row_code['policy_type'] = 900
