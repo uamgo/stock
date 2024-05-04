@@ -313,6 +313,7 @@ class StockA:
         if not self.args.all:
             # 获取所有概念板块，判断板块涨幅排名前20
             stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
+            total_concepts = len(stock_board_concept_name_em_df)
             s_num = 0
             if ':' not in self.args.concept_num:
                 e_num = int(self.args.concept_num)
@@ -327,7 +328,7 @@ class StockA:
             stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom], ignore_index=True)
             # stock_board_concept_name_em_df = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='last')
             print(stock_board_concept_name_em_df)
-            print(f"concept list len is: {len(stock_board_concept_name_em_df['板块名称'])}")
+            print(f"concept list len is: {len(stock_board_concept_name_em_df)} / {total_concepts}")
             stock_df = None
             for ind in stock_board_concept_name_em_df.index:
                 concept_name = stock_board_concept_name_em_df["板块名称"][ind]
