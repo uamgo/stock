@@ -172,6 +172,8 @@ class StockA:
         score = self.conf.get_score(last_valid_q, today_total_q)
         if score < -30:
             return None
+        if score > 0:
+            score = 50 + sell_score
 
         row_code['code'] = code
         row_code['score'] = score
