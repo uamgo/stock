@@ -19,8 +19,8 @@ class StockA:
     parser.add_argument('-c', '--code', type=str, metavar='', required=False, help='stock code', default="0")
     parser.add_argument('-d', '--is_debug', action='store_true', required=False, help='is_debug using debug_end_time',
                         default=False)
-    parser.add_argument('-n', '--concept_num', type=int, metavar='', required=False,
-                        help='Top n concepts, 20 by default without -a', default="10")
+    parser.add_argument('-n', '--concept_num', type=str, metavar='', required=False,
+                        help='Top n concepts, 10 by default without -a', default="10")
     parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
                         help='remove last day which is included in fenshi', default=False)
     parser.add_argument('-s', '--min_score', type=int, metavar='', required=False,
@@ -40,6 +40,8 @@ class StockA:
     xshg = xcals.get_calendar("XSHG")
     is_today_trade = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
     base_path = "/tmp/stock"
+    all_codes_set = set()
+    all_codes_set_lock = Lock()
 
     # 返回：list 包含 股票代码、策略类型、权重
     # 策略类型：900 策略一，800 策略二，700 策略三
@@ -173,8 +175,20 @@ class StockA:
 
         row_code['code'] = code
         row_code['score'] = score
-        print(f"{row_code}")
+        # print(f"{row_code}")
         return row_code
+
+    def check_existing_code(self, tmp_code):
+        self.all_codes_set_lock.acquire()
+
+        if tmp_code in self.all_codes_set:
+            self.all_codes_set_lock.release()
+            return True
+        self.all_codes_set.add(tmp_code)
+
+        self.all_codes_set_lock.release()
+        return False
+
 
     def get_trade_diff_mins(self, end_time):
         trade_diff_09_30 = self.get_time_diff_mins('09:30', end_time)
@@ -274,7 +288,6 @@ class StockA:
                 thread_rs.append(row)
                 flag = True
                 print(f'[{thx_name}] {row}')
-                print('-------------------\n')
         e_ts = "%.2f" % (time.time() - s_ts)
         e_date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         if flag:
@@ -298,7 +311,15 @@ class StockA:
         if not self.args.all:
             # 获取所有概念板块，判断板块涨幅排名前20
             stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
-            stock_top = stock_board_concept_name_em_df.nlargest(self.args.concept_num, '涨跌幅', keep='first')
+            s_num = 0
+            if ':' not in self.args.concept_num:
+                e_num = int(self.args.concept_num)
+            else:
+                num_split_str = self.args.concept_num.split(':')
+                s_num = int(num_split_str[0])
+                e_num = int(num_split_str[1])
+
+            stock_top = stock_board_concept_name_em_df[s_num:e_num]
             # stock_bottom = stock_board_concept_name_em_df.nsmallest(10,'涨跌幅',keep='first')
             stock_bottom = None
             stock_board_concept_name_em_df = pd.concat([stock_top, stock_bottom], ignore_index=True)
@@ -347,6 +368,8 @@ class StockA:
 
         for i in stock_zh_a_spot_em_df.index:
             code = self.conf.get_format_code(str(stock_zh_a_spot_em_df['代码'][i]))
+            if code in self.all_codes_set:
+                continue
             n += 1
             if code in self.black_list:
                 continue
@@ -417,6 +440,7 @@ if __name__ == "__main__":
     # print(f"rs type = {type(rs)}")
     rs.sort(reverse=True, key=lambda r: r['score'])
     code_set = set()
+    print("\n\n---------- Final result ------------\n")
     for idx, row in enumerate(rs):
         if not row['code'] in code_set:
             code_set.add(row['code'])
