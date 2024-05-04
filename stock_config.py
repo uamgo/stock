@@ -10,7 +10,7 @@ class StockConfig:
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     root_path = "/tmp/stock"
     xshg = xcals.get_calendar("XSHG")
-    last_trade_day_ts = xshg.schedule.loc[xshg.schedule['open'] < today_str]['open'][-1]
+    last_trade_day_ts = xshg.schedule.loc[xshg.schedule['open'] <= today_str]['open'][-2]
     last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
     is_trading_today = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
     tmp_latest_trade_day = last_trade_day_str
@@ -75,9 +75,9 @@ class StockConfig:
             return 0
         if diff_9_30 <= 120:
             return diff_9_30
-        if diff_9_30 >= 120:
-            return 120
         diff_13_00 = self.get_time_diff_mins(now_13_00, now_t)
+        if diff_9_30 >= 120 and diff_13_00 < 0:
+            return 120
         if diff_13_00 <= 0:
             return 120
         if diff_13_00 <= 120:
@@ -89,7 +89,7 @@ class StockConfig:
         return int(100 * (e_v - s_v) / s_v)
 
     def get_time_diff_mins(self, start_time, end_time):
-        if np.issubdtype(type(start_time), np.str):
+        if np.issubdtype(type(start_time), np.string_):
             s_time_split = start_time.split(':')
             s_hour = int(s_time_split[0])
             s_min = int(s_time_split[1])
@@ -97,7 +97,7 @@ class StockConfig:
             s_hour = start_time.hour
             s_min = start_time.minute
 
-        if np.issubdtype(type(end_time), np.str):
+        if np.issubdtype(type(end_time), np.string_):
             e_time_split = end_time.split(':')
             e_hour = int(e_time_split[0])
             e_min = int(e_time_split[1])
@@ -199,7 +199,7 @@ class StockConfig:
 
     def init_config(self):
         if not os.path.exists(self.config_file):
-            last_trade_day_ts = self.xshg.schedule.loc[self.xshg.schedule['open'] < self.today_str]['open'][-1]
+            last_trade_day_ts = self.xshg.schedule.loc[self.xshg.schedule['open'] <= self.today_str]['open'][-2]
             last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
             conf_str = f'''{{
     "code":"0", 
