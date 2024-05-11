@@ -10,7 +10,7 @@ class StockConfig:
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     root_path = "/tmp/stock"
     xshg = xcals.get_calendar("XSHG")
-    last_trade_day_ts = xshg.schedule.loc[xshg.schedule['open'] <= today_str]['open'][-2]
+    last_trade_day_ts = xshg.schedule.loc[xshg.schedule['open'] <= f'{today_str} 23:59:59']['open'][-2]
     last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
     is_trading_today = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
     tmp_latest_trade_day = last_trade_day_str
@@ -199,7 +199,7 @@ class StockConfig:
 
     def init_config(self):
         if not os.path.exists(self.config_file):
-            last_trade_day_ts = self.xshg.schedule.loc[self.xshg.schedule['open'] <= self.today_str]['open'][-2]
+            last_trade_day_ts = self.xshg.schedule.loc[self.xshg.schedule['open'] <= f'{self.today_str} 23:59:59']['open'][-2]
             last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
             conf_str = f'''{{
     "code":"0", 

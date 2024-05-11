@@ -5,12 +5,11 @@ import time
 import datetime
 import sys
 import pandas as pd
-import pandas_ta as ta
-import math
 import exchange_calendars as xcals
 import argparse
 import stock_config as config
 import numpy as np
+import pandas_ta as ta
 
 
 class StockA:
@@ -21,10 +20,14 @@ class StockA:
                         default=False)
     parser.add_argument('-n', '--concept_num', type=str, metavar='', required=False,
                         help='Top n concepts, 10 by default without -a', default="10")
+    parser.add_argument('-o', '--over_avg20', type=int, metavar='', required=False,
+                        help='Allowed to over avg20 percentage, 20% by default', default="20")
     parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
                         help='remove last day which is included in fenshi', default=False)
-    parser.add_argument('-s', '--min_score', type=int, metavar='', required=False,
-                        help='min score of a stock, 30 by default', default="30")
+    parser.add_argument('-s1', '--min_score', type=int, metavar='', required=False,
+                        help='min score of a stock, -30 by default', default="-30")
+    parser.add_argument('-s2', '--sell_score', type=int, metavar='', required=False,
+                        help='sell_q percentage of a stock, -20 by default', default="-20")
     parser.add_argument('-t', '--debug_end_time', type=str, metavar='', required=False,
                         help='debug_end_time using 14:30 by default', default="14:30")
 
@@ -43,26 +46,15 @@ class StockA:
     all_codes_set = set()
     all_codes_set_lock = Lock()
 
-    # 返回：list 包含 股票代码、策略类型、权重
-    # 策略类型：900 策略一，800 策略二，700 策略三
-    # 权重：100 - 100 * abs（当前价格 - 均值）/ 均值
     def filter_by_min(self, code_row):
         code = code_row['code']
-        concept_name = code_row['concept_name']
         debug_code = self.args.code
-        is_debug_end_time = self.args.is_debug
-        debug_end_time = self.args.debug_end_time
-        args_min_score = self.args.min_score
-        args_concept_num = self.args.concept_num
         if debug_code != '0' and code != debug_code:
             return None
         # 返回： 股票代码
         row_code = {}
-        # 获取前一日价格
         end = self.conf.last_trade_day_str.replace('-', '')
         start = self.time_fmt(60)
-        day_df = None
-        stock_zh_a_gdhs_detail_em_df = None
         try:
             if not self.conf.exists_daily_data(code):
                 day_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, end_date=end, adjust="")
@@ -99,19 +91,11 @@ class StockA:
             return None
 
         min_df_hist = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start, end_date=end, period="60", adjust="")
-        last_min_df_day = min_df_hist['时间'].iloc[-1][:10]
-        today_hist_min = min(min_df_hist['最低'].iloc[-1], min_df_hist['最低'].iloc[-2], min_df_hist['最低'].iloc[-3],
-                             min_df_hist['最低'].iloc[-4])
-
-        total_min_q = min_df_hist['成交量'].iloc[-1] + min_df_hist['成交量'].iloc[-2] + min_df_hist['成交量'].iloc[-3] + \
-                      min_df_hist['成交量'].iloc[-4]
         min_df_hist['d_time_idx'] = min_df_hist.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
         min_df_hist.set_index('d_time_idx', inplace=True)
         min_df_hist = pd.DataFrame(min_df_hist, columns=['收盘'])
-        macd_min_hist = min_df_hist.ta.macd(close='收盘')['MACDh_12_26_9']
 
         m_tmp_min_df = min_df_hist
-        price = min_df_hist['收盘'].iloc[-1]
 
         try:
             min_df = ak.stock_intraday_em(symbol=code)
@@ -125,6 +109,11 @@ class StockA:
 
         min_df = min_df[min_df["时间"] >= '09:30:00']
         price = min_df['成交价'].iloc[-1]
+        avg_20_df = day_df['收盘'].rolling(20).mean()
+        last_1_avg_20 = avg_20_df.iloc[-1]
+        if self.conf.get_score(max(min_df['成交价']), last_1_avg_20) > self.args.over_avg20:
+            return None
+
         zhang = int(10000 * (price - last_huan_shou_price) / last_huan_shou_price) / 100
         if zhang > 5:
             return None
@@ -134,7 +123,7 @@ class StockA:
         min_buy_q_df = min_over_median_q_df[min_over_median_q_df['买卖盘性质'] == '买盘']
         min_sell_q_df = min_over_median_q_df[min_over_median_q_df['买卖盘性质'] == '卖盘']
         sell_score = self.conf.get_score(sum(min_sell_q_df['手数']), sum(min_buy_q_df['手数']))
-        if sell_score < -20:
+        if sell_score < self.args.sell_score:
             return None
         row_code['sell_score'] = sell_score
 
@@ -155,12 +144,9 @@ class StockA:
         min_total_e = sum(min_df.apply(lambda x: x['成交价'] * x['手数'], axis=1))
         # 计算换手率
         huan_shou_lv = int(min_total_e * 100 * 10000 / flow_value) / 100
-        if huan_shou_lv < 1.5:
+        if huan_shou_lv < 1.5 * self.conf.get_trading_pecentage():
             return None
 
-        last_1_day_avg = (day_df['开盘'].iloc[-1] + day_df['收盘'].iloc[-1]) / 2
-        last_2_day_avg = (day_df['开盘'].iloc[-2] + day_df['收盘'].iloc[-2]) / 2
-        today_avg = (min_df['成交价'][0] + min_df['成交价'][-1]) / 2
         last_1_day_min = day_df['最低'].iloc[-1]
         today_min = min(min_df['成交价'])
         if today_min < last_1_day_min:
@@ -170,7 +156,7 @@ class StockA:
         last_valid_q = min(last_total_q, last_2_total_q) * self.conf.get_trading_pecentage()
 
         score = self.conf.get_score(last_valid_q, today_total_q)
-        if score < -30:
+        if score < self.args.min_score:
             return None
         if score > 0:
             score = 50 + sell_score
@@ -247,10 +233,6 @@ class StockA:
     def avg(self, a, b):
         if a is None or b is None:
             return None
-        # print(f"a={a}")
-        # print(f"a_1={type(a)}")
-        # print(f"b={b}")
-        # print(f"b2={b.iloc[a.index[0]]}")
         return (a.iloc[0] + b.iloc[a.index[0]]) / 2
 
     def time_fmt(self, day_delta):
@@ -387,30 +369,15 @@ class StockA:
             flow_val = chengjiao_val * 100 / huanshou_val
             if flow_val < 10 * 100000000 or flow_val > 200 * 100000000:
                 continue
-            # liang_val = stock_zh_a_spot_em_df['量比'][i]
-            # if liang_val <= 1:
-            #     continue
 
             if code.startswith("688") or code.startswith("8"):
                 continue
 
-            # 涨跌幅 小于 5%
-            # zhang = stock_zh_a_spot_em_df['涨跌幅'][i]
-            # if zhang >= 6:
-            #    continue
-
             v_n += 1
 
-            shi_val = stock_zh_a_spot_em_df['市盈率-动态'][i]
-            # total_val = stock_zh_a_spot_em_df['总市值'][i]
-            total_val = stock_zh_a_spot_em_df['成交量'][i]
             row = dict()
             row['code'] = code
             row['name'] = name
-            # row['shi_val'] = shi_val
-            # row['total_val'] = total_val
-            # row['flow_val'] = flow_val
-            # row['zhang'] = zhang
             row['concept_name'] = stock_zh_a_spot_em_df['concept_name'][i]
 
             thread_data_dict[batch_num].append(row)
