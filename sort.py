@@ -36,6 +36,8 @@ class StockA:
     is_trading_now = conf.is_tradingNow()
 
     black_list = ['600865']
+    code_black_prefix_list = ['20', '40']
+    name_black_prefix_list = ['ST', '退市', 'N', 'L', 'C', 'U']
     rs = list()
     lock = Lock()
     stock_zh_a_gdhs_df = None
@@ -65,7 +67,7 @@ class StockA:
             e = sys.exc_info()[0]
             print(f"code={code}, {e}")
             return None
-        if len(day_df) == 0:
+        if len(day_df) <= 35:
             # print(f"No daily data with code={code}")
             return None
 
@@ -353,6 +355,13 @@ class StockA:
 
         for i in stock_zh_a_spot_em_df.index:
             code = self.conf.get_format_code(str(stock_zh_a_spot_em_df['代码'][i]))
+            tmp_flag = False
+            for code_i in self.code_black_prefix_list:
+                if code.startswith(code_i):
+                    tmp_flag = True
+                    break
+            if tmp_flag:
+                continue
             if code in self.all_codes_set:
                 continue
             n += 1
@@ -362,7 +371,12 @@ class StockA:
             price = stock_zh_a_spot_em_df['最新价'][i]
             if price < 4:
                 continue
-            if 'ST' in name or '退市' in name or 'N' in name or 'L' in name or 'C' in name or 'U' in name:
+            tmp_flag = False
+            for name_i in self.name_black_prefix_list:
+                if name_i in name:
+                    tmp_flag = True
+                    break
+            if tmp_flag:
                 continue
             chengjiao_val = stock_zh_a_spot_em_df['成交额'][i]
             huanshou_val = stock_zh_a_spot_em_df['换手率'][i]
