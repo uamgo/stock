@@ -10,7 +10,8 @@ class StockConfig:
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     root_path = "/tmp/stock"
     xshg = xcals.get_calendar("XSHG")
-    last_trade_day_ts = xshg.schedule.loc[xshg.schedule['open'] <= f'{today_str} 23:59:59']['open'][-2]
+    trade_day_df_before = xshg.schedule.loc[xshg.schedule['open'] <= f'{today_str} 23:59:59']['open']
+    last_trade_day_ts = trade_day_df_before[-2]
     last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
     is_trading_today = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
     tmp_latest_trade_day = last_trade_day_str
@@ -27,6 +28,12 @@ class StockConfig:
     def __init__(self):
         self.init_path()
         self.init_config()
+
+    def format_date(self, tmp_date, tmp_format="%Y-%m-%d"):
+        return tmp_date.strftime(tmp_format)
+
+    def get_trade_date(self, delta_day=-1):
+        return self.trade_day_df_before[delta_day]
 
     # trading and file not exists, then return True
     def is_minute_data_expired(self, code):
@@ -87,6 +94,12 @@ class StockConfig:
 
     def get_score(self, e_v, s_v):
         return int(100 * (e_v - s_v) / s_v)
+
+    def get_abs_score(self, e_v, s_v):
+        return abs(self.get_score(e_v, s_v))
+
+    def get_near_score(self, e_v, s_v):
+        return 100 - abs(self.get_score(e_v, s_v))
 
     def get_time_diff_mins(self, start_time, end_time):
         if np.issubdtype(type(start_time), np.string_):
