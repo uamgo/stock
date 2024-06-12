@@ -40,7 +40,8 @@ products = [
 @app.route('/products', methods=['GET'], strict_slashes=False) # strict_slashes=False allows for both '/products' and '/products/' to return the same thing and methods=['GET'] specifies that this endpoint will only accept GET requests
 def get_stocks():
     start_ts = time.time()
-    a_stock.args.concept_num = 1
+    if request.args.get('n'):
+        a_stock.args.concept_num = int(request.args.get('n'))
     rs = a_stock.run()
     # print(f"rs type = {type(rs)}")
     rs.sort(reverse=True, key=lambda r: r['score'])
