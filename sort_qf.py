@@ -9,6 +9,7 @@ import exchange_calendars as xcals
 import argparse
 import stock_config as config
 import numpy as np
+import pandas_ta as ta
 
 class StockA:
     parser = argparse.ArgumentParser(description='stock script args')
@@ -105,7 +106,7 @@ class StockA:
         except:
             e = sys.exc_info()[0]
             print(f"code={code}, {e}")
-            return None
+            # return None
 
         min_df_hist = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start, end_date=end, period="60", adjust="")
         min_df_hist['d_time_idx'] = min_df_hist.apply(lambda x: self.conf.to_datetime(x['时间']), axis=1)
@@ -383,7 +384,7 @@ class StockA:
 if __name__ == "__main__":
     start_ts = time.time()
     stock = StockA()
-    stock.args.concept_num = 1
+    # stock.args.concept_num = 1
     rs = stock.run()
     # print(f"rs type = {type(rs)}")
     rs.sort(reverse=True, key=lambda r: r['score'])
