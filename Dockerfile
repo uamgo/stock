@@ -15,7 +15,7 @@ COPY --from=git_repo /app/stock /app
 
 RUN pip3 config set install.trusted-host mirrors.aliyun.com && pip3 config set global.index-url https://mirrors.aliyun.com/pypi/simple
 # Install any needed packages specified in requirements.txt
-RUN --mount=type=cache,target=/py/pkgs,sharing=locked pip3 install -r requirements.txt
+RUN --mount=type=cache,id='py_pkgs_cache',target=/py/pkgs,sharing=locked pip3 install -r requirements.txt
 
 # Make port 5070 available to the world outside this container
 EXPOSE 5070

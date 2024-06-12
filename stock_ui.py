@@ -53,8 +53,8 @@ def get_stocks():
             code_set.add(row['code'])
             code_link = a_stock.to_link(row['code'])
             # print(row)
-            row['name'] = f'<a href="{code_link}">{row["name"]}</a>'
-            rs_str += f'<p>{row}</p>'
+            row['name'] = f'<a href="{code_link}" target="_blank">{row["name"]}</a>'
+            rs_str += f'<h1>{row}</h1>'
 
     end_ts = time.time()
     back_test_msg = f"回测到: {a_stock.back_test_date} " if a_stock.args.back_test > 1 else ""
