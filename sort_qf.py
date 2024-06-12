@@ -9,8 +9,6 @@ import exchange_calendars as xcals
 import argparse
 import stock_config as config
 import numpy as np
-import pandas_ta as ta
-
 
 class StockA:
     parser = argparse.ArgumentParser(description='stock script args')
@@ -264,7 +262,7 @@ class StockA:
             stock_board_concept_name_em_df = ak.stock_board_concept_name_em()
             total_concepts = len(stock_board_concept_name_em_df)
             s_num = 0
-            if ':' not in self.args.concept_num:
+            if np.issubdtype(type(self.args.concept_num), np.integer) or ':' not in self.args.concept_num:
                 e_num = int(self.args.concept_num)
             else:
                 num_split_str = self.args.concept_num.split(':')
@@ -385,6 +383,7 @@ class StockA:
 if __name__ == "__main__":
     start_ts = time.time()
     stock = StockA()
+    stock.args.concept_num = 1
     rs = stock.run()
     # print(f"rs type = {type(rs)}")
     rs.sort(reverse=True, key=lambda r: r['score'])

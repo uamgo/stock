@@ -1,16 +1,11 @@
-# 使用说明
-# 1. 使用docker-compose  不需要配置hosts
-# 2. 根目录docker-compose up
-# 3. 等待服务启动
-
 version: '2'
 services:
-  stock:
+  a-stock:
     build:
       context: ./
-      dockerfile: Dockerfile
+      dockerfile: ./Dockerfile
     restart: always
-    container_name: stock 
-    image: stock 
-    command: sleep 360000
-
+    container_name: a-stock
+    image: a-stock
+    ports:
+      - 5070:5070
