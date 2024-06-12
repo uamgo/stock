@@ -11,7 +11,7 @@ class StockConfig:
     root_path = "/tmp/stock"
     xshg = xcals.get_calendar("XSHG")
     trade_day_df_before = xshg.schedule.loc[xshg.schedule['open'] <= f'{today_str} 23:59:59']['open']
-    last_trade_day_ts = trade_day_df_before[-2]
+    last_trade_day_ts = trade_day_df_before.iloc[-2]
     last_trade_day_str = last_trade_day_ts.strftime("%Y-%m-%d")
     is_trading_today = xshg.is_session(datetime.datetime.now().strftime("%Y-%m-%d"))
     tmp_latest_trade_day = last_trade_day_str
@@ -33,7 +33,7 @@ class StockConfig:
         return tmp_date.strftime(tmp_format)
 
     def get_trade_date(self, delta_day=-1):
-        return self.trade_day_df_before[delta_day]
+        return self.trade_day_df_before.iloc[delta_day]
 
     # trading and file not exists, then return True
     def is_minute_data_expired(self, code):
