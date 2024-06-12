@@ -1,4 +1,4 @@
-FROM bitnami/git:latest as git_repo
+FROM bitnami/git:2.45.2 as git_repo
 WORKDIR /app
 RUN git clone https://github.com/uamgo/stock.git stock
 
