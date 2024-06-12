@@ -2,6 +2,7 @@ FROM bitnami/git:2.45.2 as git_repo
 WORKDIR /app
 RUN git clone https://github.com/uamgo/stock.git stock
 ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
+WORKDIR /app/stock
 RUN git pull -r origin main
 
 # Use an official Python runtime as a parent image
