@@ -26,7 +26,7 @@ class StockA:
     parser.add_argument('-r', '--is_rm_last_day', action='store_true', required=False,
                         help='remove last day which is included in fenshi', default=False)
     parser.add_argument('-s', '--score', type=int, metavar='', required=False,
-                        help='Should over 100 by default', default="100")
+                        help='Should over 0 by default', default="0")
     parser.add_argument('-s1', '--min_score', type=int, metavar='', required=False,
                         help='min score of a stock, -30 by default', default="-30")
     parser.add_argument('-s2', '--sell_score', type=int, metavar='', required=False,
@@ -89,11 +89,20 @@ class StockA:
         last_total_q = day_df['成交量'].iloc[-1]
         last_2_total_q = day_df['成交量'].iloc[-2]
         flow_value = last_day_chengjiaoe * 100 / last_huan_shou_lv
+        last_1_total_kai = day_df['开盘'].iloc[-1]
+        last_1_total_shou = day_df['收盘'].iloc[-1]
+        last_2_total_kai = day_df['开盘'].iloc[-2]
+        last_2_total_shou = day_df['收盘'].iloc[-2]
+        last_1_avg_price = (last_1_total_kai + last_1_total_shou)/2
+        last_2_avg_price = (last_2_total_kai + last_2_total_shou)/2
         max_q_5_days = max(day_df['成交量'].iloc[-1], day_df['成交量'].iloc[-2], day_df['成交量'].iloc[-3],
                            day_df['成交量'].iloc[-4], day_df['成交量'].iloc[-5])
         min_q_5_days = min(day_df['成交量'].iloc[-1], day_df['成交量'].iloc[-2], day_df['成交量'].iloc[-3],
                            day_df['成交量'].iloc[-4], day_df['成交量'].iloc[-5])
         score_min_max_5_days = 0 - self.conf.get_score(min_q_5_days, max_q_5_days)
+
+        if score_min_max_5_days < 50:
+            return None
 
         if last_huan_shou_lv < 1:
             return None
@@ -131,6 +140,14 @@ class StockA:
 
         min_df = min_df[min_df["时间"] >= '09:30:00']
         price = min_df['成交价'].iloc[-1]
+        today_avg_price = (last_1_total_shou + price) / 2
+        # 计算加速度的变化率，得分结果 = 50 - 加速度变化率，也就是得分越高变化率越小，也就越好
+        diff_acc_1_2_price = last_1_avg_price - last_2_avg_price
+        diff_acc_0_1_price = today_avg_price - last_1_avg_price
+        if diff_acc_0_1_price != 0:
+            score_price_avg = self.conf.get_score(diff_acc_1_2_price, diff_acc_0_1_price) / 100
+        else:
+            score_price_avg = 0
         avg_20_df = day_df['收盘'].rolling(20).mean()
         last_1_avg_20 = avg_20_df.iloc[-1]
         score_avg20 = self.conf.get_abs_score(np.mean(min_df['成交价']), last_1_avg_20)
@@ -154,20 +171,27 @@ class StockA:
         score_macd_hourly = self.conf.get_score(last_1_hour_macd, last_2_hour_macd)
 
         today_total_q = sum(min_df['手数'])
-        score_q = self.conf.get_score(max_q_5_days, today_total_q)
+        score_q = 0 - self.conf.get_score(today_total_q, min_q_5_days * self.conf.get_trading_pecentage())
 
-        row_code['score_q'] = score_q
-        row_code['score_min_max_5_days'] = score_min_max_5_days
-        row_code['score_avg20'] = score_avg20
+        row_code['s_min_max_5_days'] = int(score_min_max_5_days)
+        row_code['s_q'] = int(score_q * 0.5)
+        row_code['s_avg20'] = int(score_avg20 * 0.4)
+        row_code['s_macd_hourly'] = int(score_macd_hourly * 0.3)
+        row_code['s_price_avg'] = int(score_price_avg)
 
-        # score 排名，缩量评分 + 50% avg20 + 30% macd + 10% 换手率（靠近5）+ 5% 中位数以上买卖比
-        score = score_min_max_5_days + score_q * 0.5 + 0.4 * score_avg20 + 0.3 * score_macd_hourly
+        # score 排名，缩量评分 + 50% avg20 + 30% macd + 10% 换手率（靠近5）+ 5% 中位数以上买卖比 + 负向加速的变化率
+        score = 0
+        score += row_code['s_min_max_5_days']
+        score += row_code['s_q']
+        score += row_code['s_avg20']
+        score += row_code['s_macd_hourly']
+        score += row_code['s_price_avg']
         if score < self.args.score:
             return None
         print(f'''[{code}]score_min_max_5_days: {score_min_max_5_days}, score_avg20: {score_avg20}, score_macd_hourly: {score_macd_hourly}
         ''')
         row_code['code'] = code
-        row_code['score'] = '%.2f' % score
+        row_code['score'] = score
         # print(f"{row_code}")
         return row_code
 
@@ -395,6 +419,10 @@ if __name__ == "__main__":
             code_set.add(row['code'])
             print(row)
 
+    file_name = '/Users/kevin/Downloads/stocks.txt'
+    with open(file_name, 'w') as f:
+        print(','.join(code_set), file=f)
+
     print(f"\nTotal: {len(code_set)} stocks")
     end_ts = time.time()
 
@@ -403,4 +431,5 @@ if __name__ == "__main__":
 Elapse: {'%.2f'%(end_ts - start_ts)}, {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}
 注意：交易日00:00 ~ 9:15之间的数据不准确，不要运行此脚本！
 {back_test_msg}
+被选中的股票写入文件地址：{file_name}
     ''')
