@@ -1,3 +1,7 @@
 /.idea/
 /QR.png
 /__pycache__/
+/venv/
+.venv/
+*.pyc
+*.pyo

@@ -93,6 +93,8 @@ class StockConfig:
             return 240
 
     def get_score(self, e_v, s_v):
+        if s_v == 0:
+            return 0
         return int(100 * (e_v - s_v) / s_v)
 
     def get_abs_score(self, e_v, s_v):

@@ -1,11 +1,16 @@
 version: '2'
 services:
   a-stock:
-    build:
-      context: ./
-      dockerfile: ./Dockerfile
-    restart: always
+    image: python:3.9-slim
     container_name: a-stock
-    image: a-stock
     ports:
       - 5070:5070
+    volumes:
+      - stock:/app
+    working_dir: /app
+    command: ["sh", "start.sh"]
+    restart: always
+
+volumes:
+  stock:
+    external: true
