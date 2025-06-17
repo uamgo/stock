@@ -36,7 +36,7 @@ class ConceptStockFetcher:
         with open(self.concept_map_path, "rb") as f:
             return pickle.load(f)
 
-    async def update_concept_stocks(self, top_n=None):
+    async def update_concept_stocks(self, top_n=None, force_update=False):
         concept_df = self.load_concept_df()
         # 排序并筛选涨幅前 top_n 的概念（如果指定）
         if top_n is not None and "涨跌幅" in concept_df.columns:
@@ -47,10 +47,13 @@ class ConceptStockFetcher:
         for idx, row in concept_df.iterrows():
             code = row["概念代码"]
             concept_name = row["概念名称"]
+            save_path = os.path.join(self.save_dir, f"{code}.pkl")
+            if not force_update and os.path.exists(save_path):
+                print(f"已存在 {save_path}，跳过")
+                continue
             print(f"正在获取概念：{concept_name}（{code}），进度：{idx + 1}/{len(concept_df)}")
             df = await self.fetch_concept_stocks(code)
             if df is not None and not df.empty:
-                save_path = os.path.join(self.save_dir, f"{code}.pkl")
                 df.to_pickle(save_path)
                 print(f"已保存 {concept_name}（{code}）成分股到 {save_path}，共 {len(df)} 只股票")
             else:
@@ -58,7 +61,7 @@ class ConceptStockFetcher:
 
 if __name__ == "__main__":
     fetcher = ConceptStockFetcher()
-    # 默认全部
+    # 默认全部，不强制更新
     # asyncio.run(fetcher.update_concept_stocks())
-    # # 只更新涨幅前10的概念股
-    asyncio.run(fetcher.update_concept_stocks(top_n=30))
+    # # 只更新涨幅前30的概念股，强制更新
+    asyncio.run(fetcher.update_concept_stocks(top_n=30, force_update=False))

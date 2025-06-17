@@ -26,8 +26,6 @@ class SinaConceptFetcher:
             if len(parts) < 2:
                 print("未找到概念板块数据")
                 return None
-            # 解析为 dict
-            # parts[1] 可能包含多余的分号和换行，需要提取大括号内的内容
             match = re.search(r'\{.*\}', parts[1], re.DOTALL)
             if not match:
                 print("未找到有效的概念板块 JSON")
@@ -61,17 +59,20 @@ class SinaConceptFetcher:
         df = df.sort_values(by="涨跌幅", ascending=False)
         return df
 
-    def save_df(self, df):
+    def save_df(self, df, force_update=False):
+        if not force_update and os.path.exists(self.save_path):
+            print(f"{self.save_path} 已存在，跳过保存")
+            return
         df.to_pickle(self.save_path)
         print(f"已保存到 {self.save_path}")
 
-    def fetch_and_save(self, top_n=None):
+    def fetch_and_save(self, top_n=None, force_update=False):
         concept_map = asyncio.run(self.fetch_sina_concept_map())
         if concept_map:
             df = self.concept_map_to_df(concept_map)
             if top_n is not None:
                 df = df.head(top_n)
-            self.save_df(df)
+            self.save_df(df, force_update=force_update)
             return df
         else:
             print("未获取到概念数据")
@@ -79,5 +80,5 @@ class SinaConceptFetcher:
 
 if __name__ == "__main__":
     fetcher = SinaConceptFetcher()
-    df = fetcher.fetch_and_save()  # 默认全部
+    df = fetcher.fetch_and_save(force_update=False)  # 默认不强制更新
     print(df)

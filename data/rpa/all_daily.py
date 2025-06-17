@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import asyncio
 from playwright.async_api import async_playwright
-import io  # 新增
+import io
 
 class SinaDailyFetcher:
     def __init__(self, codes_path="/tmp/stock/base/all_codes.pkl", save_dir="/tmp/stock/base/daily"):
@@ -12,7 +12,7 @@ class SinaDailyFetcher:
         os.makedirs(self.save_dir, exist_ok=True)
 
     async def fetch_60min_data(self, symbol):
-        url = f"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={symbol}&scale=60&ma=3&datalen=20"
+        url = f"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={symbol}&scale=60&ma=3&datalen=500"
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
@@ -26,7 +26,7 @@ class SinaDailyFetcher:
                 return None
             json_str = content[start:end+1]
             try:
-                df = pd.read_json(io.StringIO(json_str))  # 修正
+                df = pd.read_json(io.StringIO(json_str))
                 return df
             except Exception as e:
                 print(f"{symbol} 60分钟线解析失败: {e}")
@@ -48,16 +48,16 @@ class SinaDailyFetcher:
         daily = daily.reset_index()
         return daily
 
-    async def update_all(self):
+    async def update_all(self, force_update=False):
         codes_df = pd.read_pickle(self.codes_path)
         code_col = "symbol" if "symbol" in codes_df.columns else ("code" if "code" in codes_df.columns else "股票代码")
         codes = codes_df[code_col].drop_duplicates().tolist()
         for idx, code in enumerate(codes, 1):
-            await self.update_one(code, idx, len(codes))
+            await self.update_one(code, idx, len(codes), force_update=force_update)
 
-    async def update_one(self, symbol, idx=1, total=1):
+    async def update_one(self, symbol, idx=1, total=1, force_update=False):
         save_path = os.path.join(self.save_dir, f"{symbol}_daily.pkl")
-        if os.path.exists(save_path):
+        if not force_update and os.path.exists(save_path):
             print(f"[{idx}/{total}] {symbol} 已存在，跳过")
             return
         symbol_full = symbol if symbol.startswith("sh") or symbol.startswith("sz") else f"sz{symbol}"
@@ -72,7 +72,7 @@ class SinaDailyFetcher:
 
 if __name__ == "__main__":
     fetcher = SinaDailyFetcher()
-    # 默认全部
+    # 默认全部，不强制更新
     asyncio.run(fetcher.update_all())
-    # # 只更新指定symbol
-    # asyncio.run(fetcher.update_one("sz000001"))
+    # # 只更新指定symbol，强制更新
+    # asyncio.run(fetcher.update_one("sz000001", force_update=True))
