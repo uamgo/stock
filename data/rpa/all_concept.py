@@ -5,34 +5,38 @@ from playwright.async_api import async_playwright
 import pandas as pd
 import os
 
-async def fetch_sina_concept_map():
-    url = "https://money.finance.sina.com.cn/q/view/newFLJK.php?param=class"
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(url)
-        await page.wait_for_load_state('networkidle')
-        content = await page.content()
-        await browser.close()
+class SinaConceptFetcher:
+    def __init__(self, save_dir="/tmp/stock/base"):
+        self.save_dir = save_dir
+        os.makedirs(self.save_dir, exist_ok=True)
+        self.save_path = os.path.join(self.save_dir, "concept_map.pkl")
 
-        # 直接用 split 提取 JSON 部分
-        parts = re.split(r'=\s*', content, maxsplit=1)
-        if len(parts) < 2:
-            print("未找到概念板块数据")
-            return None
-        # 解析为 dict
-        # parts[1] 可能包含多余的分号和换行，需要提取大括号内的内容
-        match = re.search(r'\{.*\}', parts[1], re.DOTALL)
-        if not match:
-            print("未找到有效的概念板块 JSON")
-            return None
-        json_str = match.group(0)
-        concept_map = json.loads(json_str)
-        return concept_map
+    async def fetch_sina_concept_map(self):
+        url = "https://money.finance.sina.com.cn/q/view/newFLJK.php?param=class"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url)
+            await page.wait_for_load_state('networkidle')
+            content = await page.content()
+            await browser.close()
 
-if __name__ == "__main__":
-    concept_map = asyncio.run(fetch_sina_concept_map())
-    if concept_map:
+            # 直接用 split 提取 JSON 部分
+            parts = re.split(r'=\s*', content, maxsplit=1)
+            if len(parts) < 2:
+                print("未找到概念板块数据")
+                return None
+            # 解析为 dict
+            # parts[1] 可能包含多余的分号和换行，需要提取大括号内的内容
+            match = re.search(r'\{.*\}', parts[1], re.DOTALL)
+            if not match:
+                print("未找到有效的概念板块 JSON")
+                return None
+            json_str = match.group(0)
+            concept_map = json.loads(json_str)
+            return concept_map
+
+    def concept_map_to_df(self, concept_map):
         data = []
         for v in concept_map.values():
             fields = v.strip().split(',')
@@ -55,9 +59,25 @@ if __name__ == "__main__":
         df = pd.DataFrame(data)
         df["涨跌幅"] = pd.to_numeric(df["涨跌幅"], errors="coerce")
         df = df.sort_values(by="涨跌幅", ascending=False)
-        print(df)
-        output_dir = "/tmp/stock/base"
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "concept_map.pkl")
-        df.to_pickle(output_path)
-        print(f"已保存到 {output_path}")
+        return df
+
+    def save_df(self, df):
+        df.to_pickle(self.save_path)
+        print(f"已保存到 {self.save_path}")
+
+    def fetch_and_save(self, top_n=None):
+        concept_map = asyncio.run(self.fetch_sina_concept_map())
+        if concept_map:
+            df = self.concept_map_to_df(concept_map)
+            if top_n is not None:
+                df = df.head(top_n)
+            self.save_df(df)
+            return df
+        else:
+            print("未获取到概念数据")
+            return None
+
+if __name__ == "__main__":
+    fetcher = SinaConceptFetcher()
+    df = fetcher.fetch_and_save()  # 默认全部
+    print(df)

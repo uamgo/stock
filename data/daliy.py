@@ -25,54 +25,26 @@ def get_previous_trading_date() -> str:
     return prev.strftime("%Y%m%d")
 
 def fetch_top_concept_stocks(top_n: int = 10) -> List[Dict[str, str]]:
-    # concept_df = ak.stock_board_concept_name_em()
-    # top_concepts = concept_df.head(top_n)['板块名称'].tolist()
-    top_concepts = [
-        "数字货币",
-        "跨境支付",
-        "数字哨兵",
-        "电子身份证",
-        "拼多多概念",
-        "数据确权",
-        "Web3.0",
-        "盲盒经济",
-        "气溶胶检测",
-        "蚂蚁概念",
-        "NFT 概念",
-        "智谱 AI",
-        "智慧政务",
-        "谷子经济",
-        "快手概念",
-        "财税数字化",
-        "华为昇腾",
-        "鸿蒙概念",
-        "移动支付",
-        "虚拟数字人",
-        "ChatGPT 概念",
-        "国产软件",
-        "数据安全",
-        "信创",
-        "区块链",
-        "多模态 AI",
-        "数字经济",
-        "短剧互动游戏",
-        "元宇宙概念",
-        "生物识别",
-        "CPO 概念",
-        "AI 语料"
-    ][:top_n]
+    concept_df = pd.read_pickle("/tmp/stock/base/concept_map.pkl")
+    top_concepts = concept_df.sort_values('涨跌幅', ascending=False).head(top_n)['概念代码']
     stocks = []
-    for concept in top_concepts:
-        df = ak.stock_board_concept_cons_em(symbol=concept)
-        stocks.extend(df[['代码', '名称']].to_dict('records'))
-    logging.info(f"Fetched {len(stocks)} stocks from top {top_n} concepts")
-    return stocks
+    concept_dir = Path("/tmp/stock/base/concepts")
+    for concept_code in top_concepts:
+        concept_file = concept_dir / f"{concept_code}.pkl"
+        if concept_file.exists():
+            df = pd.read_pickle(concept_file)
+            stocks.append(df)
+    if stocks:
+        all_stocks_df = pd.concat(stocks, ignore_index=True)
+        all_stocks_df = all_stocks_df.drop_duplicates(subset=['symbol'])
+        return all_stocks_df.to_dict(orient='records')
+    return []
 
 def filter_stocks(stocks: List[Dict[str, str]]) -> List[str]:
     return [
-        s['代码'] for s in stocks
-        if not any(s['名称'].startswith(prefix) for prefix in NAME_BLACK_PREFIXES)
-        and not any(s['代码'].startswith(code) for code in CODE_BLACK_LIST)
+        s['symbol'] for s in stocks
+        if not any(s['symbol'].startswith(prefix) for prefix in NAME_BLACK_PREFIXES)
+        and not any(s['symbol'].startswith(code) for code in CODE_BLACK_LIST)
     ]
 
 def get_black_list_path() -> Path:
@@ -104,11 +76,10 @@ def fetch_daily_stock_data(
     if end_date is None:
         end_date = datetime.datetime.now().strftime("%Y%m%d")
     stock_data = {}
-    data_dir = Path(__file__).parent / datetime.datetime.now().strftime('%Y%m%d')
+    data_dir = Path("/tmp/stock/base/daily")
     data_dir.mkdir(parents=True, exist_ok=True)
     total = len(stock_list)
     for idx, code in enumerate(stock_list, 1):
-        logging.info(f"Processing {idx}/{total}: {code}")
         if code in black_list:
             continue
         try:
@@ -118,18 +89,15 @@ def fetch_daily_stock_data(
             else:
                 df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust="")
                 df.to_pickle(file_path)
-                time.sleep(1)
+                time.sleep(1.5)
             df['日期'] = pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d')
             df['股票代码'] = code
             stock_data[code] = df
+            logging.info(f"Processed {idx}/{total}: {code}")
         except Exception as e:
-            if "Remote end closed connection without response" in str(e):
-                logging.warning(f"Error fetching data for {code}: {e}")
-            else:
-                logging.warning(f"Error fetching data for {code}: {e}", exc_info=True)
+            logging.warning(f"Error fetching data for {code}: {e}", exc_info=True)
             time.sleep(1)
             break
-            
     return stock_data
 
 def get_trading_time_ratio(now: datetime.datetime) -> float:
@@ -167,7 +135,8 @@ def macd_filter(all_data: Dict[str, pd.DataFrame], black_list: List[str]) -> Lis
             if today_volume < threshold:
                 result.append(code)
             else:
-                black_list.append(code)
+                if code not in black_list:
+                    black_list.append(code)
     return result
 
 def remove_blacklisted_stocks(stocks: List[Dict[str, str]], black_list: List[str]) -> List[Dict[str, str]]:
