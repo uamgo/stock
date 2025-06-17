@@ -25,8 +25,42 @@ def get_previous_trading_date() -> str:
     return prev.strftime("%Y%m%d")
 
 def fetch_top_concept_stocks(top_n: int = 10) -> List[Dict[str, str]]:
-    concept_df = ak.stock_board_concept_name_em()
-    top_concepts = concept_df.head(top_n)['板块名称'].tolist()
+    # concept_df = ak.stock_board_concept_name_em()
+    # top_concepts = concept_df.head(top_n)['板块名称'].tolist()
+    top_concepts = [
+        "数字货币",
+        "跨境支付",
+        "数字哨兵",
+        "电子身份证",
+        "拼多多概念",
+        "数据确权",
+        "Web3.0",
+        "盲盒经济",
+        "气溶胶检测",
+        "蚂蚁概念",
+        "NFT 概念",
+        "智谱 AI",
+        "智慧政务",
+        "谷子经济",
+        "快手概念",
+        "财税数字化",
+        "华为昇腾",
+        "鸿蒙概念",
+        "移动支付",
+        "虚拟数字人",
+        "ChatGPT 概念",
+        "国产软件",
+        "数据安全",
+        "信创",
+        "区块链",
+        "多模态 AI",
+        "数字经济",
+        "短剧互动游戏",
+        "元宇宙概念",
+        "生物识别",
+        "CPO 概念",
+        "AI 语料"
+    ][:top_n]
     stocks = []
     for concept in top_concepts:
         df = ak.stock_board_concept_cons_em(symbol=concept)
