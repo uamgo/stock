@@ -8,6 +8,7 @@ import time
 import math
 from pathlib import Path
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s"
@@ -159,9 +160,9 @@ def main():
     now = datetime.datetime.now()
     allowed_start = now.replace(hour=14, minute=20, second=0, microsecond=0)
     allowed_end = now.replace(hour=14, minute=59, second=59, microsecond=999999)
-    if not (allowed_start <= now <= allowed_end):
-        logging.warning("程序仅可在交易日下午 14:20 - 14:59 之间运行。")
-        return
+    # if not (allowed_start <= now <= allowed_end):
+    #     logging.warning("程序仅可在交易日下午 14:20 - 14:59 之间运行。")
+    #     return
     start_time = time.perf_counter()
     black_list = load_black_list()
     all_stocks = fetch_top_concept_stocks(20)
