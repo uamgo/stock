@@ -1,0 +1,21 @@
+{
+    // 让 VS Code 终端默认在项目根目录
+    "terminal.integrated.cwd": "${workspaceFolder}",
+
+    // 让 Python 扩展自动读取 .env 文件（可选，但推荐）
+    "python.envFile": "${workspaceFolder}/.env",
+
+    // 让 Python 解释器使用你的虚拟环境
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
+    // 让 VS Code 右键“在终端运行”时自动带上 PYTHONPATH
+    "terminal.integrated.env.osx": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}"
+    },
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}"
+    }
+}
