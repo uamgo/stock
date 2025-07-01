@@ -1,18 +1,17 @@
 import re
 import json
 import requests
+from playwright.async_api import async_playwright
 import os
 import datetime
 import pandas as pd
 import exchange_calendars as xcals
 
-PROXY_USE_COUNT = 0  # 新增全局变量
-
-def fetch_all_pages(base_url, proxies=None):
+async def fetch_all_pages(page_obj, base_url):
     """
-    循环分页抓取所有数据，返回所有行和总数（requests 方式）
+    循环分页抓取所有数据，返回所有行和总数
+    :param page_obj: playwright page对象
     :param base_url: 带有 {page} 占位符的url
-    :param proxies: requests 支持的 proxies 参数（可选）
     :return: (all_rows, total)
     """
     all_rows = []
@@ -20,23 +19,15 @@ def fetch_all_pages(base_url, proxies=None):
     page = 1
     while True:
         url = base_url.format(page=page)
-        retry = 0
-        max_retry = 3
-        while retry < max_retry:
-            try:
-                resp = requests.get(url, timeout=10, proxies=proxies)
-                resp.encoding = "utf-8"
-                text = resp.text
-                break
-            except Exception as e:
-                print(f"页面请求异常: {e}，尝试更换代理（第{retry+1}次）")
-                proxies = get_proxy()
-                retry += 1
-        else:
-            print("连续三次更换代理均失败，终止请求")
-            return all_rows, total
+        try:
+            await page_obj.goto(url, timeout=10000)  # 10秒超时
+            await page_obj.wait_for_load_state('networkidle')
+            content = await page_obj.content()
+        except Exception as e:
+            print(f"页面跳转异常: {e}")
+            break
 
-        match = re.search(r'json\((\{.*?\})\)', text, re.DOTALL)
+        match = re.search(r'json\((\{.*?\})\)', content, re.DOTALL)
         if not match:
             print("未找到有效数据")
             break
@@ -75,7 +66,7 @@ def get_kuai_proxy():
         proxy_addr = resp.text.strip()
         # 返回属性列表，包含代理、用户名、密码
         return {
-            "proxy": f"http://{proxy_addr}",
+            "proxy": proxy_addr,
             "username": username,
             "password": password
         }
@@ -84,25 +75,14 @@ def get_kuai_proxy():
         return None
     
 def get_proxy():
-    """
-    返回 requests 支持的 http://user:pass@host:port 形式的代理字符串
-    并统计代理使用次数
-    """
-    global PROXY_USE_COUNT
-    PROXY_USE_COUNT += 1  # 每次调用加一
-    proxy_info = get_kuai_proxy()
-    if not proxy_info:
-        return None
-    proxy_addr = proxy_info["proxy"].replace("http://", "")
-    user = proxy_info["username"]
-    pwd = proxy_info["password"]
-    server = proxy_addr
-    proxy = {
-        "http": f"http://{user}:{pwd}@{server}",
-        "https": f"http://{user}:{pwd}@{server}",
-    }
-    print(f"使用代理: {proxy_info['proxy']}（累计调用次数: {PROXY_USE_COUNT}）")
-    return proxy
+    return get_kuai_proxy()
+
+async def init_async_playwright():
+    playwright = await async_playwright().start()
+    return playwright
+
+async def close_async_playwright(playwright):
+    await playwright.stop()
 
 def need_update(filepath):
     """
@@ -227,23 +207,3 @@ def is_trading_day():
         today = datetime.datetime.now().weekday()
         return today < 5
     
-def is_in_trading_time():
-    """
-    判断当前时间是否在中国A股交易时间（9:30-11:30, 13:00-15:00）内
-    :return: True/False
-    """
-    if not is_trading_day():
-        return False
-    now = datetime.datetime.now().time()
-    morning_start = datetime.time(9, 30)
-    morning_end = datetime.time(11, 30)
-    afternoon_start = datetime.time(13, 0)
-    afternoon_end = datetime.time(15, 0)
-    return (morning_start <= now <= morning_end) or (afternoon_start <= now <= afternoon_end)
-
-def print_proxy_use_count():
-    """
-    打印代理使用的总次数
-    """
-    print(f"代理累计被调用次数: {PROXY_USE_COUNT}")
-

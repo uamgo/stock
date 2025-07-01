@@ -1,9 +1,9 @@
 import os
 from datetime import datetime, time
 import pandas as pd
-from data.est import est_daily
-from data.est import est_common
-from data.est import est_prepare_data
+from data.est.req import est_daily
+from data.est.req import est_common
+from data.est.req import est_prepare_data
 
 def is_before_open():
     # 假设9:30开盘
@@ -36,7 +36,11 @@ class MinQPolicy:
         if members_df is None or "代码" not in members_df.columns:
             return pd.DataFrame()
 
+        stage1_codes = []
+        stage2_codes = []
+        stage3_codes = []
         result = []
+
         for code in members_df["代码"]:
             try:
                 daily_df = self.daily_fetcher.get_daily_df(code)
@@ -51,6 +55,8 @@ class MinQPolicy:
                 vol5_sorted = vol5.sort_values(ascending=False).values
                 if len(vol5_sorted) < 2 or vol5_sorted[0] < 2 * vol5_sorted[1]:
                     continue
+                stage1_codes.append(code)
+                # 阶段1结束
 
                 # 2. 最近一个交易日的量是最高量的两倍以下，且最后一个交易日的最低点高于前一日的最低点
                 last_vol = vol5.iloc[-1]
@@ -61,15 +67,17 @@ class MinQPolicy:
                 prev_low = pd.to_numeric(recent5_df["最低"], errors="coerce").iloc[-2]
                 if last_low <= prev_low:
                     continue
+                stage2_codes.append(code)
+                # 阶段2结束
 
                 # 3. 如果今天是交易日，且按照已过去的交易时间占比*7日最高量*50% > 最后一个交易日的成交量，则选出来
                 recent7_df = daily_df.tail(7).reset_index(drop=True)
                 vol7 = pd.to_numeric(recent7_df["成交量"], errors="coerce")
                 if vol7.isnull().any():
                     continue
-                ratio = get_trading_time_ratio() if est_common.is_trading_day() else 1
+                ratio = get_trading_time_ratio() if est_common.is_in_trading_time() else 1
                 threshold = vol7.max() * ratio * 0.5
-                if est_common.is_trading_day() and threshold > last_vol:
+                if threshold > last_vol:
                     result.append({
                         "代码": code,
                         "名称": recent5_df.iloc[-1].get("名称", ""),
@@ -80,19 +88,13 @@ class MinQPolicy:
                         "前一日最低": prev_low,
                         "时间占比阈值": threshold
                     })
-                elif not est_common.is_trading_day():
-                    result.append({
-                        "代码": code,
-                        "名称": recent5_df.iloc[-1].get("名称", ""),
-                        "今日成交量": last_vol,
-                        "5日最大量": max_vol,
-                        "7日最大量": vol7.max(),
-                        "最低": last_low,
-                        "前一日最低": prev_low,
-                        "时间占比阈值": threshold
-                    })
+                    stage3_codes.append(code)
             except Exception as e:
                 print(f"{code} 处理异常: {e}")
+
+        print(f"阶段1通过股票数量: {len(stage1_codes)}")
+        print(f"阶段2通过股票数量: {len(stage2_codes)}")
+        print(f"阶段3通过股票数量: {len(stage3_codes)}")
 
         if not result:
             return pd.DataFrame()
@@ -103,3 +105,12 @@ if __name__ == "__main__":
     policy = MinQPolicy()
     minq_df = policy.select(members_df)
     print(minq_df)
+    if not minq_df.empty:
+        output_path = "/Users/kevin/Downloads/min_q_data.txt"
+        codes = ",".join(map(str, minq_df["代码"]))
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(codes)
+            print(f"保存的文件名: {output_path}")
+        except Exception as e:
+            print(f"保存文件时出错: {e}")

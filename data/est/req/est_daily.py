@@ -13,6 +13,8 @@ class EastmoneyDailyStockFetcher:
     def __init__(self, save_dir="/tmp/stock/daily"):
         self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
+        # 初始化进度计数器
+        self.progress_counter = {"count": 0, "total": 0}
 
     def get_save_path(self, secid_or_code):
         code = secid_or_code.split('.')[-1]
@@ -62,34 +64,32 @@ class EastmoneyDailyStockFetcher:
             rows = [k.split(',') for k in klines]
             return pd.DataFrame(rows, columns=columns)
         except Exception as e:
-            import traceback
             print(f"获取数据失败: {e}\nURL: {url}\nProxy: {proxy}")
-            traceback.print_exc()
             return None
 
     def save_daily(self, secid, df):
         if df is not None:
             save_path = self.get_save_path(secid)
             df.to_pickle(save_path)
-            print(f"{secid} 日线数据已保存到 {save_path}")
+            if self.progress_counter is not None and self.progress_counter["count"] % 50 == 0:
+                print(f"{secid} 日线数据已保存到 {save_path}，进度: {self.progress_counter['count']}/{self.progress_counter['total']}")
 
     def update_all_daily(
         self, secids, period="day", adjust="qfq", start_date=None, end_date=None,
-        use_proxy_and_concurrent=10, progress_counter=None
+        use_proxy_and_concurrent=10
     ):
         # 过滤出需要更新的 secid
         secids = [secid for secid in secids if est_common.need_update(self.get_save_path(secid.split('.')[-1]))]
         if not secids:
-            print("所有本地数据均为最新，无需更新")
+            print(f"所有本地数据均为最新，无需更新，数据目录: {self.save_dir}")
             return
 
         total = len(secids)
-        if progress_counter is not None:
-            progress_counter["total"] = total
-            progress_counter["count"] = 0
+        self.progress_counter["total"] = total
+        self.progress_counter["count"] = 0
 
-        # chunk_size 至少为 5
-        chunk_size = max(5, math.ceil(total / use_proxy_and_concurrent)) if use_proxy_and_concurrent > 0 else total
+        # chunk_size 至少为 40
+        chunk_size = max(40, math.ceil(total / use_proxy_and_concurrent)) if use_proxy_and_concurrent > 0 else total
         chunks = [secids[i:i + chunk_size] for i in range(0, total, chunk_size)]
 
         def worker(chunk):
@@ -106,14 +106,11 @@ class EastmoneyDailyStockFetcher:
                     proxy = est_common.get_proxy()
                 if df is None:
                     print(f"{secid} 更换三次代理后仍然失败，跳过")
-                    if progress_counter is not None:
-                        progress_counter["count"] += 1
-                    return
+                    self.progress_counter["count"] += 1
+                    continue
                 if df is not None:
                     self.save_daily(secid, df)
-                if progress_counter is not None:
-                    progress_counter["count"] += 1
-                    print(f"进度: {progress_counter['count']}/{progress_counter['total']} 完成 {secid}")
+                self.progress_counter["count"] += 1
 
         threads = []
         for chunk in chunks:

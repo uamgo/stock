@@ -1,6 +1,6 @@
 import pandas as pd
-from data.est import est_daily
-from data.est import est_prepare_data
+from data.est.req import est_daily
+from data.est.req import est_prepare_data
 
 
 class FistUpPolicy:
@@ -67,6 +67,11 @@ if __name__ == "__main__":
     up_df = policy.select()
     print(up_df)
     if not up_df.empty:
-        codes = ",".join(up_df["代码"].astype(str))
-        with open("/Users/kevin/Downloads/first_up_data.txt", "w", encoding="utf-8") as f:
-            f.write(codes)
+        output_path = "/Users/kevin/Downloads/first_up_data.txt"
+        codes = ",".join(map(str, up_df["代码"]))
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(codes)
+            print(f"保存的文件名: {output_path}")
+        except Exception as e:
+            print(f"保存文件时出错: {e}")

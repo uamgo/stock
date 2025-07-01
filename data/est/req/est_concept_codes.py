@@ -78,7 +78,7 @@ class ConceptStockManager:
         concept_codes = [code for code in concept_codes if est_common.need_update_simple(self.get_save_path(code))]
         progress_counter["total"] = len(concept_codes)
         if not concept_codes:
-            print("所有概念数据均为最新，无需更新。")
+            print(f"所有概念数据均为最新，无需更新。数据保存目录: {self.save_dir}")
             return
 
         chunk_size = max(5, math.ceil(len(concept_codes) / use_proxy_and_concurrent) if use_proxy_and_concurrent > 0 else len(concept_codes))

@@ -14,6 +14,8 @@ class EastmoneyMinuteStockFetcher:
     def __init__(self, save_dir: str = "/tmp/stock/minute"):
         self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
+        # 初始化进度计数器
+        self.progress_counter = {"count": 0, "total": 0}
 
     def get_save_path(self, code: str, period: str = "1") -> str:
         return os.path.join(self.save_dir, f"{code}_{period}min.pkl")
@@ -51,7 +53,7 @@ class EastmoneyMinuteStockFetcher:
     def fetch_minute(self, symbol: str, period: str = "1", adjust: str = "", start_date=None, end_date=None, proxy=None) -> pd.DataFrame | None:
         url = self.get_base_url(symbol, period, adjust, start_date, end_date)
         proxies = proxy
-        print(f"url: {url}")
+        # print(f"url: {url}")
         try:
             resp = requests.get(url, proxies=proxies, timeout=30)
             resp.encoding = "utf-8"
@@ -91,31 +93,31 @@ class EastmoneyMinuteStockFetcher:
             return df
         except Exception as e:
             print(f"{symbol} 获取数据异常: {e}, proxy: {proxy}")
-            traceback.print_exc()
             return None
 
     def save_minute(self, symbol: str, period: str, df: pd.DataFrame):
         save_path = self.get_save_path(symbol, period)
         if df is not None:
             df.to_pickle(save_path)
-            print(f"{symbol} {period}min 分时数据已保存到 {save_path}")
+            # print(f"{symbol} {period}min 分时数据已保存到 {save_path}")
 
     def update_all_minute(self, symbols: list[str], period: str = "1", adjust: str = "", start_date=None, end_date=None, use_proxy_and_concurrent: int = 10, progress_counter=None):
-        if progress_counter is not None:
-            progress_counter["total"] = len(symbols)
-            progress_counter["count"] = 0
+        if progress_counter is None:
+            progress_counter = self.progress_counter
+        progress_counter["total"] = len(symbols)
+        progress_counter["count"] = 0
 
         symbols = [s for s in symbols if est_common.need_update(self.get_save_path(s, period))]
         if not symbols:
-            print("所有数据均为最新，无需更新。")
+            print(f"所有数据均为最新，无需更新。数据目录: {self.save_dir}")
             return
-        # chunk_size 至少为 5
-        chunk_size = max(5, math.ceil(len(symbols) / use_proxy_and_concurrent)) if use_proxy_and_concurrent > 0 else len(symbols)
+        # chunk_size 至少为 40
+        chunk_size = max(40, math.ceil(len(symbols) / use_proxy_and_concurrent)) if use_proxy_and_concurrent > 0 else len(symbols)
         chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
 
         def worker(chunk):
             proxy = est_common.get_proxy()
-            for symbol in chunk:
+            for idx, symbol in enumerate(chunk):
                 retry = 0
                 while retry < 3:
                     try:
@@ -136,11 +138,11 @@ class EastmoneyMinuteStockFetcher:
                     self.save_minute(symbol, period, df)
                 else:
                     print(f"{symbol} 三次更换代理均失败，跳过。")
-                if df is not None:
-                    self.save_minute(symbol, period, df)
                 if progress_counter is not None:
                     progress_counter["count"] += 1
-                    print(f"[{threading.current_thread().name}] 进度: {progress_counter['count']}/{progress_counter['total']} 完成 {symbol}")
+                    # 每20个symbol打印一次进度
+                    if progress_counter["count"] % 20 == 0 or progress_counter["count"] == progress_counter["total"]:
+                        print(f"[{threading.current_thread().name}] 进度: {progress_counter['count']}/{progress_counter['total']} 完成 {symbol}")
 
         threads = []
         for chunk in chunks:
