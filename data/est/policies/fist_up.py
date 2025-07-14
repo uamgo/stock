@@ -1,6 +1,8 @@
 import pandas as pd
 from data.est.req import est_daily
 from data.est.req import est_prepare_data
+import os
+from datetime import datetime
 
 
 class FistUpPolicy:
@@ -41,22 +43,39 @@ class FistUpPolicy:
                     pct_chg = float(last_daily.get("涨跌幅", 0))
                 except Exception:
                     pct_chg = 0
+
+                # 计算上影线和下影线
+                try:
+                    high = float(last_daily.get("最高", 0))
+                    low = float(last_daily.get("最低", 0))
+                    open_ = float(last_daily.get("开盘", 0))
+                    close = float(last_daily.get("收盘", 0))
+                    upper_shadow = high - max(open_, close)
+                    lower_shadow = min(open_, close) - low
+                    if close <= open_:
+                        continue
+                except Exception:
+                    upper_shadow = 0
+                    lower_shadow = 0
+
                 # 首放量：今日成交量等于近20日最大且前19天都小于今日
+                # 新增条件：上影线小于下影线
                 if (
                     today_vol >= max_vol_20
                     and pct_chg > 3
                     and (vol[:-1] < today_vol).all()
+                    and upper_shadow < lower_shadow
                 ):
                     result.append({
-                        "代码": code,
-                        "名称": last_daily.get("名称", ""),
-                        "涨跌幅": pct_chg,
-                        "今日成交量": today_vol,
-                        "20日最大量": max_vol_20
+                    "代码": code,
+                    "名称": last_daily.get("名称", ""),
+                    "涨跌幅": pct_chg,
+                    "今日成交量": today_vol,
+                    "20日最大量": max_vol_20
                     })
             except Exception as e:
                 print(f"{code} 处理异常: {e}")
-                continue
+            continue
         if not result:
             return pd.DataFrame()
         df = pd.DataFrame(result)
@@ -72,6 +91,7 @@ if __name__ == "__main__":
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(codes)
-            print(f"保存的文件名: {output_path}")
+            mtime = os.path.getmtime(output_path)
+            print(f"保存的文件名: {output_path}，最后修改时间: {datetime.fromtimestamp(mtime)}")
         except Exception as e:
             print(f"保存文件时出错: {e}")

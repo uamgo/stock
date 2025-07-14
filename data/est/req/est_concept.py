@@ -34,7 +34,6 @@ class EastmoneyConceptStockFetcher:
         total = None
         while True:
             url = base_url.format(page=page)
-            print(f"请求URL: {url}")
             try:
                 resp = requests.get(url, proxies=self.proxy, timeout=10)
                 resp.raise_for_status()
@@ -50,7 +49,7 @@ class EastmoneyConceptStockFetcher:
                     break
                 page += 1
             except Exception as e:
-                print(f"请求第{page}页失败: {e}")
+                print(f"请求第{page}页失败: {e}，URL: {url}")
                 break
         if all_rows:
             if total is not None and len(all_rows) < total:

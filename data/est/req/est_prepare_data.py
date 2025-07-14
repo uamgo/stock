@@ -15,7 +15,7 @@ from data.est.req.est_daily import EastmoneyDailyStockFetcher
 from data.est.req.est_minute import EastmoneyMinuteStockFetcher
 from data.est.req import est_common
 
-FILTER_WORDS = ['*ST', 'ST', '退市', 'N', 'L', 'C', 'U', 'bj', 'BJ']
+FILTER_WORDS = ['*ST', 'ST', '退市', 'N', 'L', 'C', 'U', 'bj', 'BJ', '688', '83', '87', '88', '89', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99']
 FILTER_PATTERN = re.compile('|'.join(map(re.escape, FILTER_WORDS)), re.IGNORECASE)
 DATA_DIR = Path("/tmp/stock/est_prepare_data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,13 +44,18 @@ class EstStockPipeline:
         if not dfs:
             return pd.DataFrame()
         all_df = pd.concat(dfs, ignore_index=True)
-        mask = ~all_df["名称"].str.contains(FILTER_PATTERN, na=False) & \
-               ~all_df["代码"].str.contains(FILTER_PATTERN, na=False)
+        # 过滤掉以 FILTER_WORDS 里任一元素开头的股票
+        # 过滤掉名称或代码以 FILTER_WORDS 中任一元素开头，或最新价>=100 的股票
+        mask = (
+            ~all_df["名称"].str.startswith(tuple(FILTER_WORDS), na=False)
+            & ~all_df["代码"].str.startswith(tuple(FILTER_WORDS), na=False)
+        )
         return all_df[mask].drop_duplicates(subset=["代码"])
 
     async def run(self) -> pd.DataFrame:
         if not est_common.need_update(MEMBERS_DF_PATH):
-            print(f"{MEMBERS_DF_PATH} 无需更新")
+            mtime = os.path.getmtime(MEMBERS_DF_PATH)
+            print(f"{MEMBERS_DF_PATH} 无需更新，文件最后修改时间: {datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')}")
             return None
 
         t0 = time.time()
@@ -58,6 +63,7 @@ class EstStockPipeline:
 
         # 获取概念板块
         t_start = time.time()
+        self.top_n = 10
         top_concept_codes = await self.get_top_n_concepts()
         t_end = time.time()
         time_stats["获取概念板块"] = t_end - t_start
@@ -78,7 +84,8 @@ class EstStockPipeline:
         t_end = time.time()
         time_stats["过滤并保存成分股"] = t_end - t_start
         print(f"过滤后成分股数量: {len(members_df)}，已保存 members_df 到 {MEMBERS_DF_PATH}")
-
+        for idx, row in members_df.iterrows():
+            print(f"代码: {row['代码']}, 名称: {row['名称']}, 股价: {row['股价']}")
         # 更新日线数据
         if not members_df.empty:
             t_start = time.time()
@@ -98,7 +105,9 @@ class EstStockPipeline:
         print("各阶段耗时统计：")
         for k, v in time_stats.items():
             print(f"{k}: {v:.2f} 秒")
-        print(f"总耗时: {total_time:.2f} 秒")
+        print(
+            f"总耗时: {total_time:.2f} 秒 | 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         return members_df
 
     async def update_daily_for_members(self, members_df: pd.DataFrame, period="day", adjust="qfq", use_proxy_and_concurrent=20):

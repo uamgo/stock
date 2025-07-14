@@ -92,7 +92,7 @@ class EastmoneyMinuteStockFetcher:
                 df = df[[col for col in select_cols if col in df.columns]]
             return df
         except Exception as e:
-            print(f"{symbol} 获取数据异常: {e}, proxy: {proxy}")
+            print(f"{symbol} 获取数据异常: {est_common.exc_summary(e)}, proxy: {proxy['http']}")
             return None
 
     def save_minute(self, symbol: str, period: str, df: pd.DataFrame):

@@ -38,10 +38,15 @@ class ConceptStockManager:
         import requests
 
         all_rows, _ = est_common.fetch_all_pages(base_url, proxies=proxies)
-
         if all_rows:
             df = pd.DataFrame(all_rows).rename(
-                columns={"f12": "代码", "f14": "名称", "f3": "涨跌幅", "f13": "前缀"}
+                columns={
+                    "f12": "代码",
+                    "f14": "名称",
+                    "f3": "涨跌幅",
+                    "f2": "股价",
+                    "f13": "前缀"
+                }
             )
             df["涨跌幅"] = pd.to_numeric(df["涨跌幅"], errors="coerce")
             return df.sort_values(by="涨跌幅", ascending=False).reset_index(drop=True)
@@ -98,23 +103,9 @@ class ConceptStockManager:
         print(f"{path} 文件不存在，请先运行 update_all_concepts 获取数据。")
         return None
 
-    def get_members_codes(self, concept_codes) -> pd.DataFrame:
-        dfs = []
-        for code in concept_codes:
-            df = self.get_concept_df(code)
-            if df is not None:
-                df = df[["代码", "名称"]].copy()
-                df["concept_code"] = code
-                dfs.append(df)
-        if dfs:
-            return pd.concat(dfs, ignore_index=True)
-        return pd.DataFrame(columns=["代码", "名称", "concept_code"])
-
 if __name__ == "__main__":
     manager = ConceptStockManager()
     all_concept_codes = ['BK0816', 'BK1051', 'BK0983', 'BK1071', 'BK1152', 'BK0883', 'BK0603', 'BK1075', 'BK0606', 'BK0818']
     manager.update_all_concepts(all_concept_codes, use_proxy_and_concurrent=2)
     df = manager.get_concept_df("BK0816")
     print(df)
-    codes_df = manager.get_members_codes(["BK0816", "BK1051"])
-    print(codes_df)

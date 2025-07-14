@@ -29,7 +29,7 @@ def fetch_all_pages(base_url, proxies=None):
                 text = resp.text
                 break
             except Exception as e:
-                print(f"页面请求异常: {e}，尝试更换代理（第{retry+1}次）")
+                print(f"页面请求异常: {exc_summary(e)}，尝试更换代理（第{retry+1}次）")
                 proxies = get_proxy()
                 retry += 1
         else:
@@ -247,3 +247,12 @@ def print_proxy_use_count():
     """
     print(f"代理累计被调用次数: {PROXY_USE_COUNT}")
 
+def exc_summary(e):
+    """
+    获取异常信息摘要（截断100字符）
+    :param e: 异常对象
+    """
+    msg = str(e)
+    if len(msg) > 100:
+        msg = msg[:100]
+    return msg

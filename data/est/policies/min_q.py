@@ -36,9 +36,6 @@ class MinQPolicy:
         if members_df is None or "代码" not in members_df.columns:
             return pd.DataFrame()
 
-        stage1_codes = []
-        stage2_codes = []
-        stage3_codes = []
         result = []
 
         for code in members_df["代码"]:
@@ -46,55 +43,69 @@ class MinQPolicy:
                 daily_df = self.daily_fetcher.get_daily_df(code)
                 if daily_df is None or daily_df.empty or len(daily_df) < 7:
                     continue
+                # 计算20日均价，仅当数据量足够时
+                if len(daily_df) > 20:
+                    last20_close = pd.to_numeric(daily_df.tail(20)["收盘"], errors="coerce")
+                    if last20_close.isnull().any():
+                        continue
+                    avg_20 = last20_close.mean()
+                    # 获取最后一日收盘价
+                    last_close = pd.to_numeric(daily_df.tail(1)["收盘"], errors="coerce").iloc[0]
+                    # 淘汰最后一日收盘价在均价以下的股票
+                    if last_close < avg_20:
+                        continue
+                    # 淘汰当前价格超出20日均价线10%以上的股票
+                    if last_close > avg_20 * 1.05:
+                        continue
+                # 只判断最后一个交易日和前一个交易日是否缩量下跌
+                recent2_df = daily_df.tail(2).reset_index(drop=True)
+                vol = pd.to_numeric(recent2_df["成交量"], errors="coerce")
+                close = pd.to_numeric(recent2_df["收盘"], errors="coerce")
+                if vol.isnull().any() or close.isnull().any():
+                    continue
 
-                # 1. 最近5天内有过爆量（最高量是第二高的两倍以上）
-                recent5_df = daily_df.tail(5).reset_index(drop=True)
-                vol5 = pd.to_numeric(recent5_df["成交量"], errors="coerce")
-                if vol5.isnull().any():
-                    continue
-                vol5_sorted = vol5.sort_values(ascending=False).values
-                if len(vol5_sorted) < 2 or vol5_sorted[0] < 2 * vol5_sorted[1]:
-                    continue
-                stage1_codes.append(code)
-                # 阶段1结束
+                last_vol = vol.iloc[-1]
+                prev_vol = vol.iloc[-2]
+                last_close = close.iloc[-1]
+                prev_close = close.iloc[-2]
 
-                # 2. 最近一个交易日的量是最高量的两倍以下，且最后一个交易日的最低点高于前一日的最低点
-                last_vol = vol5.iloc[-1]
-                max_vol = vol5.max()
-                if last_vol > 2 * max_vol:
+                # 近7日最高量和最低量
+                last7_vol = pd.to_numeric(daily_df.tail(7)["成交量"], errors="coerce")
+                if last7_vol.isnull().any():
                     continue
-                last_low = pd.to_numeric(recent5_df["最低"], errors="coerce").iloc[-1]
-                prev_low = pd.to_numeric(recent5_df["最低"], errors="coerce").iloc[-2]
-                if last_low <= prev_low:
+                max_vol_7 = last7_vol.max()
+                min_vol_7 = last7_vol.min()
+                if min_vol_7 == 0 or max_vol_7 < 2 * min_vol_7:
                     continue
-                stage2_codes.append(code)
-                # 阶段2结束
 
-                # 3. 如果今天是交易日，且按照已过去的交易时间占比*7日最高量*50% > 最后一个交易日的成交量，则选出来
-                recent7_df = daily_df.tail(7).reset_index(drop=True)
-                vol7 = pd.to_numeric(recent7_df["成交量"], errors="coerce")
-                if vol7.isnull().any():
+                # 排除今日最低价格比昨天最低价低的股票
+                low = pd.to_numeric(recent2_df["最低"], errors="coerce")
+                if low.isnull().any():
                     continue
-                ratio = get_trading_time_ratio() if est_common.is_in_trading_time() else 1
-                threshold = vol7.max() * ratio * 0.5
-                if threshold > last_vol:
+                last_low = low.iloc[-1]
+                prev_low = low.iloc[-2]
+                if last_low < prev_low:
+                    continue
+
+                # 今日跌幅
+                if prev_close == 0:
+                    continue
+                pct_chg = (last_close - prev_close) / prev_close * 100
+
+                if last_vol < prev_vol and last_close < prev_close and pct_chg > -3:
                     result.append({
-                        "代码": code,
-                        "名称": recent5_df.iloc[-1].get("名称", ""),
-                        "今日成交量": last_vol,
-                        "5日最大量": max_vol,
-                        "7日最大量": vol7.max(),
-                        "最低": last_low,
-                        "前一日最低": prev_low,
-                        "时间占比阈值": threshold
+                    "代码": code,
+                    "名称": recent2_df.iloc[-1].get("名称", ""),
+                    "今日成交量": last_vol,
+                    "昨日成交量": prev_vol,
+                    "今日收盘": last_close,
+                    "昨日收盘": prev_close,
+                    "今日跌幅%": pct_chg,
+                    "7日最高量": max_vol_7,
+                    "7日最低量": min_vol_7
                     })
-                    stage3_codes.append(code)
             except Exception as e:
                 print(f"{code} 处理异常: {e}")
-
-        print(f"阶段1通过股票数量: {len(stage1_codes)}")
-        print(f"阶段2通过股票数量: {len(stage2_codes)}")
-        print(f"阶段3通过股票数量: {len(stage3_codes)}")
 
         if not result:
             return pd.DataFrame()
@@ -111,6 +122,7 @@ if __name__ == "__main__":
         try:
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(codes)
-            print(f"保存的文件名: {output_path}")
+            mtime = os.path.getmtime(output_path)
+            print(f"保存的文件名: {output_path}, 最后修改时间: {datetime.fromtimestamp(mtime)}")
         except Exception as e:
             print(f"保存文件时出错: {e}")
