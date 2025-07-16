@@ -5,3 +5,82 @@
 .venv/
 *.pyc
 *.pyo
+
+# 日志文件
+/logs/
+*.log
+
+# 数据文件
+/data/cache/
+/data/backups/
+/data/exports/
+/data/positions/
+/data/backtest/
+/tmp/
+*.pkl
+*.parquet
+*.csv
+*.json
+
+# 配置文件
+/config/trading_config.json
+/config/user_config.json
+.env
+.env.local
+
+# 输出文件
+/Users/kevin/Downloads/selected_stocks*.txt
+/Users/kevin/Downloads/stock_analysis_report*.txt
+/Users/kevin/Downloads/up_up_*.txt
+/Users/kevin/Downloads/tail_trading_*.txt
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 编辑器文件
+.vscode/
+.vs/
+*.sublime-project
+*.sublime-workspace
+
+# Python 相关
+*.egg-info/
+dist/
+build/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+
+# 报告文件
+*.html
+*.pdf
+
+# 文档目录保护
+/docs/temp/
+/docs/drafts/
+/docs/*.tmp.md
