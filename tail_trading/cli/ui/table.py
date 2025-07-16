@@ -35,16 +35,28 @@ def print_stock_table(stocks_df: pd.DataFrame) -> None:
     col_widths = {}
     for display_name, col_name in display_columns:
         if display_name == "排名":
-            col_widths[display_name] = 4
-        elif col_name in stocks_df.columns:
-            # 计算数据的最大宽度
-            if col_name == "名称":
-                max_width = max(len(str(val)) for val in stocks_df[col_name])
-                col_widths[display_name] = min(max_width, 10)
-            elif col_name == "代码":
-                col_widths[display_name] = 8
+            col_widths[display_name] = 6
+        elif display_name == "代码":
+            col_widths[display_name] = 10
+        elif display_name == "名称":
+            if col_name in stocks_df.columns:
+                # 计算名称的最大宽度
+                max_width = max(len(str(val)) for val in stocks_df[col_name]) if not stocks_df[col_name].empty else 4
+                col_widths[display_name] = max(min(max_width, 12), 6)  # 最小6，最大12
             else:
-                col_widths[display_name] = 8
+                col_widths[display_name] = 6
+        elif display_name == "涨跌幅":
+            col_widths[display_name] = 10
+        elif display_name == "补涨概率":
+            col_widths[display_name] = 10
+        elif display_name == "风险评分":
+            col_widths[display_name] = 10
+        elif display_name == "量比":
+            col_widths[display_name] = 10
+        elif display_name == "收盘价":
+            col_widths[display_name] = 10
+        elif display_name == "20日位置":
+            col_widths[display_name] = 10
         else:
             col_widths[display_name] = 8
     

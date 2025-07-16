@@ -51,10 +51,16 @@ class TailUpStrategy(BaseStrategy):
             self.logger.warning("No stock data available")
             return pd.DataFrame()
         
+        # 创建股票代码到名称的映射
+        stock_names = {}
+        if "名称" in stocks_data.columns:
+            stock_names = dict(zip(stocks_data["代码"], stocks_data["名称"]))
+        
         result = []
         
         for _, row in stocks_data.iterrows():
             code = row["代码"]
+            name = stock_names.get(code, "")
             
             try:
                 # 获取日线数据
@@ -64,7 +70,7 @@ class TailUpStrategy(BaseStrategy):
                     continue
                 
                 # 分析股票
-                stock_analysis = self._analyze_stock(code, daily_df)
+                stock_analysis = self._analyze_stock(code, daily_df, name)
                 
                 if stock_analysis is None:
                     continue
@@ -84,13 +90,14 @@ class TailUpStrategy(BaseStrategy):
         df = pd.DataFrame(result)
         return df.sort_values(by="次日补涨概率", ascending=False).reset_index(drop=True)
     
-    def _analyze_stock(self, code: str, daily_df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_stock(self, code: str, daily_df: pd.DataFrame, name: str = "") -> Dict[str, Any]:
         """
         分析单只股票
         
         Args:
             code: 股票代码
             daily_df: 日线数据
+            name: 股票名称
             
         Returns:
             分析结果字典
@@ -146,7 +153,7 @@ class TailUpStrategy(BaseStrategy):
             # 构建分析结果
             analysis = {
                 "代码": code,
-                "名称": last_daily.get("名称", ""),
+                "名称": name,
                 "涨跌幅": pct_chg,
                 "量比": volume_ratio,
                 "收盘价": today_close,
