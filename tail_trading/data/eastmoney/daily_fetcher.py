@@ -47,12 +47,6 @@ class EastmoneyDataFetcher(DataFetcher):
         """
         cache_key = "stock_list"
         
-        # 尝试从缓存获取
-        cached_data = self.get_from_cache(cache_key, expire_minutes=60)
-        if cached_data is not None:
-            self.logger.info("Loaded stock list from cache")
-            return cached_data
-        
         try:
             if self.prepare_data is None:
                 raise ImportError("prepare_data module not available")
@@ -61,17 +55,28 @@ class EastmoneyDataFetcher(DataFetcher):
             members_df = self.prepare_data.load_members_df_from_path()
             
             if members_df is None or members_df.empty:
+                # 如果没有数据，尝试从缓存获取
+                cached_data = self.get_from_cache(cache_key, expire_minutes=60)
+                if cached_data is not None:
+                    self.logger.info("Loaded stock list from cache (fallback)")
+                    return cached_data
+                
                 self.logger.warning("No stock list data available")
                 return pd.DataFrame()
             
-            # 保存到缓存
+            # 保存到缓存（每次都更新缓存）
             self.save_to_cache(cache_key, members_df)
             
             self.logger.info(f"Loaded {len(members_df)} stocks from data source")
             return members_df
             
         except Exception as e:
+            # 出错时尝试从缓存获取
             self.logger.error(f"Failed to get stock list: {e}")
+            cached_data = self.get_from_cache(cache_key, expire_minutes=60)
+            if cached_data is not None:
+                self.logger.info("Loaded stock list from cache (error fallback)")
+                return cached_data
             return pd.DataFrame()
     
     def get_daily_data(self, stock_code: str, days: int = 30) -> Optional[pd.DataFrame]:

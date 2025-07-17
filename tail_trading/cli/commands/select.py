@@ -54,6 +54,12 @@ def add_select_parser(subparsers: argparse._SubParsersAction) -> None:
         default=20,
         help="最大显示数量"
     )
+    
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="显示详细的筛选过程信息"
+    )
 
 def execute_select(args: argparse.Namespace) -> int:
     """
@@ -66,6 +72,13 @@ def execute_select(args: argparse.Namespace) -> int:
         退出码
     """
     logger = get_logger("select_command")
+    
+    # 根据 verbose 参数设置日志级别
+    if args.verbose:
+        import logging
+        logging.getLogger("tail_up_strategy").setLevel(logging.DEBUG)
+        strategy_logger = get_logger("tail_up_strategy")
+        strategy_logger.setLevel(logging.DEBUG)
     
     print("=== 尾盘选股系统 ===")
     print(f"运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

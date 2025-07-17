@@ -56,32 +56,66 @@ class TailUpStrategy(BaseStrategy):
         if "名称" in stocks_data.columns:
             stock_names = dict(zip(stocks_data["代码"], stocks_data["名称"]))
         
+        # 统计信息
+        total_stocks = len(stocks_data)
+        no_data_count = 0
+        analysis_failed_count = 0
+        criteria_failed_count = 0
+        success_count = 0
+        
+        print(f"📊 开始分析 {total_stocks} 只股票...")
+        
         result = []
         
-        for _, row in stocks_data.iterrows():
+        for i, (_, row) in enumerate(stocks_data.iterrows()):
             code = row["代码"]
             name = stock_names.get(code, "")
+            
+            # 显示进度
+            if (i + 1) % 50 == 0 or i == 0:
+                print(f"🔍 进度: {i + 1}/{total_stocks} ({(i + 1)/total_stocks*100:.1f}%)")
             
             try:
                 # 获取日线数据
                 daily_df = self.data_fetcher.get_daily_data(code, days=self.config.lookback_days)
                 
                 if daily_df is None or daily_df.empty or len(daily_df) < self.config.lookback_days:
+                    no_data_count += 1
                     continue
                 
                 # 分析股票
                 stock_analysis = self._analyze_stock(code, daily_df, name)
                 
                 if stock_analysis is None:
+                    analysis_failed_count += 1
                     continue
                 
                 # 应用选股条件
                 if self._meets_selection_criteria(stock_analysis):
                     result.append(stock_analysis)
+                    success_count += 1
+                else:
+                    criteria_failed_count += 1
                     
             except Exception as e:
                 self.logger.error(f"Error analyzing stock {code}: {e}")
+                analysis_failed_count += 1
                 continue
+        
+        # 打印统计结果
+        print(f"\n📈 筛选统计结果:")
+        print(f"  📊 总股票数: {total_stocks}")
+        print(f"  ❌ 数据不足: {no_data_count} ({no_data_count/total_stocks*100:.1f}%)")
+        print(f"  🔧 分析失败: {analysis_failed_count} ({analysis_failed_count/total_stocks*100:.1f}%)")
+        print(f"  🚫 不符合条件: {criteria_failed_count} ({criteria_failed_count/total_stocks*100:.1f}%)")
+        print(f"  ✅ 符合条件: {success_count} ({success_count/total_stocks*100:.1f}%)")
+        
+        if not result:
+            return pd.DataFrame()
+        
+        # 转换为DataFrame并排序
+        df = pd.DataFrame(result)
+        return df.sort_values(by="次日补涨概率", ascending=False).reset_index(drop=True)
         
         if not result:
             return pd.DataFrame()
@@ -190,12 +224,16 @@ class TailUpStrategy(BaseStrategy):
         Returns:
             是否满足条件
         """
+        code = analysis.get("代码", "")
+        
         # 条件1：涨跌幅在指定范围内
         if not (self.config.min_pct_chg <= analysis["涨跌幅"] <= self.config.max_pct_chg):
+            self.logger.debug(f"{code}: 涨跌幅{analysis['涨跌幅']:.2f}%不在范围[{self.config.min_pct_chg}, {self.config.max_pct_chg}]内")
             return False
         
         # 条件2：量比在合理范围内
         if not (self.config.min_volume_ratio <= analysis["量比"] <= self.config.max_volume_ratio):
+            self.logger.debug(f"{code}: 量比{analysis['量比']:.2f}不在范围[{self.config.min_volume_ratio}, {self.config.max_volume_ratio}]内")
             return False
         
         # 条件3：技术形态良好
@@ -206,22 +244,28 @@ class TailUpStrategy(BaseStrategy):
         if body_length <= 0.5:
             # 小实体情况
             if upper_shadow > 2.0:
+                self.logger.debug(f"{code}: 小实体上影线{upper_shadow:.2f}过长")
                 return False
         else:
             # 正常实体情况
             if lower_shadow < upper_shadow * 0.8:
+                self.logger.debug(f"{code}: 下影线{lower_shadow:.2f}支撑不足")
                 return False
             if upper_shadow > body_length * self.config.max_upper_shadow_ratio:
+                self.logger.debug(f"{code}: 上影线{upper_shadow:.2f}过长")
                 return False
         
         # 条件4：位置不能太高
         if analysis["position_ratio"] > self.config.max_position_ratio:
+            self.logger.debug(f"{code}: 位置{analysis['position_ratio']*100:.1f}%过高")
             return False
         
         # 条件5：风险评分不能太高
         if analysis["风险评分"] > self.config.high_risk_threshold:
+            self.logger.debug(f"{code}: 风险评分{analysis['风险评分']:.1f}过高")
             return False
         
+        self.logger.debug(f"{code}: 通过所有筛选条件")
         return True
     
     def _calculate_probability_score(self, pct_chg: float, volume_ratio: float, 
