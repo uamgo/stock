@@ -1,0 +1,10 @@
+# 后端API依赖
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pydantic==2.5.0
+croniter==1.4.1
+apscheduler==3.10.4
+python-dotenv==1.0.0

@@ -1,0 +1,46 @@
+# 后端Dockerfile - 使用Alpine Linux轻量级镜像
+FROM alpine:latest
+
+WORKDIR /app
+
+# 配置阿里云软件源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 安装Python和依赖
+RUN apk update && apk add --no-cache \
+    python3 \
+    python3-dev \
+    py3-pip \
+    gcc \
+    musl-dev \
+    linux-headers \
+    curl
+
+# 创建Python符号链接
+RUN ln -sf python3 /usr/bin/python && \
+    ln -sf pip3 /usr/bin/pip
+
+# 配置pip使用阿里云源
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set install.trusted-host mirrors.aliyun.com
+
+# 复制requirements文件
+COPY backend/requirements.txt .
+
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制后端代码
+COPY backend/ .
+COPY tail_trading.py /app/
+COPY tail_trading/ /app/tail_trading/
+COPY data/ /app/data/
+
+# 创建必要的目录
+RUN mkdir -p /app/data /app/logs
+
+# 暴露端口
+EXPOSE 8000
+
+# 启动命令
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

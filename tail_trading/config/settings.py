@@ -47,7 +47,7 @@ class Settings:
     WORKING_DAYS = [0, 1, 2, 3, 4]  # 周一到周五
     
     # 默认输出路径
-    DEFAULT_OUTPUT_DIR = Path.home() / "Downloads"
+    DEFAULT_OUTPUT_DIR = Path("/tmp") if os.path.exists("/tmp") else Path.home() / "Downloads"
     
     # API配置
     API_TIMEOUT = 30
