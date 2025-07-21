@@ -20,7 +20,12 @@
 *.pkl
 *.parquet
 *.csv
-*.json
+
+# 临时JSON文件
+smart_selection_*.json
+health_check_*.json
+update_result_*.json
+validation_report_*.json
 
 # 配置文件
 /config/trading_config.json
@@ -76,6 +81,10 @@ build/
 *.tar.gz
 *.rar
 
+# 部署和构建文件
+essential-files.tar.gz
+.requirements.hash
+
 # 报告文件
 *.html
 *.pdf
@@ -84,3 +93,10 @@ build/
 /docs/temp/
 /docs/drafts/
 /docs/*.tmp.md
+
+# 部署相关文档（临时生成）
+*_DEPLOYMENT_*.md
+*_CLEANUP_*.md
+BOT_USER_GUIDE.md
+LOCAL_DEPLOYMENT_UPDATE.md
+PRODUCTION_DEPLOYMENT_SUMMARY.md
