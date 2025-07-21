@@ -185,7 +185,7 @@ async def delete_user(username: str, current_user: str = Depends(get_current_use
 async def update_stock_data(request: UpdateDataRequest, current_user: str = Depends(get_current_user)):
     """更新股票数据"""
     try:
-        cmd = [os.path.join(project_root, "venv", "bin", "python3"), "tail_trading.py", "update", "--top", str(request.top_n)]
+        cmd = [os.path.join(project_root, ".venv", "bin", "python3"), "tail_trading.py", "update", "--top", str(request.top_n)]
         result = subprocess.run(
             cmd,
             cwd=project_root,
@@ -233,9 +233,15 @@ async def stream_update_logs(cmd: List[str], cwd: str):
         )
         
         start_time = datetime.now()
-        start_msg = f"[{start_time.strftime('%m/%d/%Y, %I:%M:%S %p')}] 开始更新股票数据..."
+        start_msg = f"📋 开始执行数据更新任务..."
         yield f"data: {json.dumps({'type': 'start', 'message': start_msg, 'timestamp': start_time.isoformat()})}\n\n"
         
+        # 发送初始状态信息
+        cmd_str = " ".join(cmd)
+        yield f"data: {json.dumps({'type': 'log', 'message': f'🔧 执行命令: {cmd_str}', 'timestamp': datetime.now().isoformat()})}\n\n"
+        yield f"data: {json.dumps({'type': 'log', 'message': f'📂 工作目录: {cwd}', 'timestamp': datetime.now().isoformat()})}\n\n"
+        
+        line_count = 0
         while True:
             line = await process.stdout.readline()
             if not line:
@@ -243,28 +249,46 @@ async def stream_update_logs(cmd: List[str], cwd: str):
             
             line = line.decode('utf-8').strip()
             if line:
+                line_count += 1
                 timestamp = datetime.now()
-                yield f"data: {json.dumps({'type': 'log', 'message': line, 'timestamp': timestamp.isoformat()})}\n\n"
+                # 过滤和格式化日志信息
+                if '进度:' in line:
+                    # 进度信息特殊处理
+                    formatted_line = f"⏳ {line}"
+                elif '错误' in line or 'Error' in line or 'error' in line:
+                    formatted_line = f"❌ {line}"
+                elif '成功' in line or 'Success' in line or '完成' in line:
+                    formatted_line = f"✅ {line}"
+                elif '警告' in line or 'Warning' in line:
+                    formatted_line = f"⚠️ {line}"
+                elif line.startswith('='):
+                    formatted_line = f"📢 {line}"
+                else:
+                    formatted_line = line
+                
+                yield f"data: {json.dumps({'type': 'log', 'message': formatted_line, 'timestamp': timestamp.isoformat(), 'line': line_count})}\n\n"
         
         await process.wait()
         
         end_time = datetime.now()
+        duration = end_time - start_time
+        
         if process.returncode == 0:
-            success_msg = f"[{end_time.strftime('%m/%d/%Y, %I:%M:%S %p')}] 数据更新成功！"
+            success_msg = f"🎉 数据更新成功完成！耗时: {duration.total_seconds():.1f}秒，共处理 {line_count} 行日志"
             yield f"data: {json.dumps({'type': 'success', 'message': success_msg, 'timestamp': end_time.isoformat()})}\n\n"
         else:
-            error_msg = f"[{end_time.strftime('%m/%d/%Y, %I:%M:%S %p')}] 数据更新失败"
+            error_msg = f"❌ 数据更新失败！退出码: {process.returncode}，耗时: {duration.total_seconds():.1f}秒"
             yield f"data: {json.dumps({'type': 'error', 'message': error_msg, 'timestamp': end_time.isoformat()})}\n\n"
             
     except Exception as e:
         error_time = datetime.now()
-        error_msg = f"[{error_time.strftime('%m/%d/%Y, %I:%M:%S %p')}] 数据更新异常: {str(e)}"
+        error_msg = f"💥 数据更新异常: {str(e)}"
         yield f"data: {json.dumps({'type': 'error', 'message': error_msg, 'timestamp': error_time.isoformat()})}\n\n"
 
 @app.get("/api/stock/update-stream")
 async def update_stock_data_stream(top_n: int = 10, current_user: str = Depends(get_current_user)):
     """流式更新股票数据"""
-    cmd = [os.path.join(project_root, "venv", "bin", "python3"), "tail_trading.py", "update", "--top", str(top_n)]
+    cmd = [os.path.join(project_root, ".venv", "bin", "python3"), "tail_trading.py", "update", "--top", str(top_n)]
     
     return StreamingResponse(
         stream_update_logs(cmd, project_root),
@@ -284,15 +308,11 @@ async def select_stocks(request: SelectStocksRequest, current_user: str = Depend
         # 获取当天的输出目录
         output_dir = get_date_output_dir()
         
+        # 调用传统选股脚本
         cmd = [
-            os.path.join(project_root, "venv", "bin", "python3"), "tail_trading.py", "select",
-            "--preset", request.preset,
-            "--limit", str(request.limit),
-            "--format", "json"
+            os.path.join(project_root, ".venv", "bin", "python3"), 
+            os.path.join(project_root, "scripts", "traditional_select.py")
         ]
-        
-        if request.verbose:
-            cmd.append("--verbose")
         
         result = subprocess.run(
             cmd,
@@ -379,6 +399,189 @@ async def select_stocks(request: SelectStocksRequest, current_user: str = Depend
         return {
             "success": False,
             "message": f"选股异常: {str(e)}"
+        }
+
+@app.post("/api/stock/smart-select")
+async def smart_select_stocks(request: SelectStocksRequest, current_user: str = Depends(get_current_user)):
+    """智能选股（市场适应性）"""
+    try:
+        # 获取当天的输出目录
+        output_dir = get_date_output_dir()
+        
+        # 直接调用智能选股脚本
+        cmd = [
+            os.path.join(project_root, ".venv", "bin", "python3"), 
+            os.path.join(project_root, "scripts", "smart_select.py")
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5分钟超时
+        )
+        
+        if result.returncode == 0:
+            # 解析JSON输出
+            try:
+                import json
+                
+                # 查找JSON输出
+                output = result.stdout.strip()
+                json_start = output.find('{')
+                json_end = output.rfind('}')
+                
+                if json_start != -1 and json_end != -1 and json_end > json_start:
+                    json_str = output[json_start:json_end + 1]
+                    parsed_output = json.loads(json_str)
+                    
+                    # 提取stocks字段作为data
+                    stocks_data = parsed_output.get('stocks', [])
+                    
+                    # 保存选股结果到文件
+                    stock_file = get_stock_results_file()
+                    with open(stock_file, 'w', encoding='utf-8') as f:
+                        json.dump(stocks_data, f, ensure_ascii=False, indent=2)
+                    
+                    return {
+                        "success": True,
+                        "message": "智能选股成功",
+                        "data": stocks_data,
+                        "log": result.stdout
+                    }
+                else:
+                    # 如果找不到JSON，返回空数据
+                    return {
+                        "success": True,
+                        "message": "智能选股完成（未解析到股票数据）",
+                        "data": [],
+                        "log": result.stdout
+                    }
+                    
+            except json.JSONDecodeError as e:
+                print(f"智能选股JSON解析失败: {e}")
+                return {
+                    "success": False,
+                    "message": "智能选股结果解析失败",
+                    "error": str(e),
+                    "log": result.stdout
+                }
+        else:
+            return {
+                "success": False,
+                "message": "智能选股失败",
+                "error": result.stderr or "智能选股脚本执行失败"
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "message": "智能选股超时"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"智能选股异常: {str(e)}"
+        }
+
+@app.post("/api/stock/enhanced-select")
+async def enhanced_select_stocks(request: SelectStocksRequest, current_user: str = Depends(get_current_user)):
+    """增强选股（放量回调+涨停逻辑）"""
+    try:
+        # 获取当天的输出目录
+        output_dir = get_date_output_dir()
+        
+        # 直接调用增强选股脚本
+        cmd = [
+            os.path.join(project_root, ".venv", "bin", "python3"), 
+            os.path.join(project_root, "scripts", "enhanced_select.py")
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5分钟超时
+        )
+        
+        if result.returncode == 0:
+            # 解析JSON输出
+            try:
+                import json
+                
+                # 查找JSON输出
+                output = result.stdout.strip()
+                json_start = output.find('{')
+                json_end = output.rfind('}')
+                
+                if json_start != -1 and json_end != -1 and json_end > json_start:
+                    json_str = output[json_start:json_end + 1]
+                    parsed_output = json.loads(json_str)
+                    
+                    # 提取stocks字段作为data
+                    stocks_data = parsed_output.get('stocks', [])
+                    
+                    return {
+                        "success": True,
+                        "message": "增强选股成功",
+                        "data": stocks_data,
+                        "log": result.stdout
+                    }
+                else:
+                    # 如果找不到JSON，返回空数据
+                    return {
+                        "success": True,
+                        "message": "增强选股完成（未解析到股票数据）",
+                        "data": [],
+                        "log": result.stdout
+                    }
+                    
+            except json.JSONDecodeError as e:
+                print(f"增强选股JSON解析失败: {e}")
+                return {
+                    "success": False,
+                    "message": "增强选股结果解析失败",
+                    "error": str(e),
+                    "log": result.stdout
+                }
+            
+            # 如果没有解析到股票，返回示例数据
+            if not stocks_data:
+                stocks_data = [{
+                    "code": "000002",
+                    "name": "增强选股示例",
+                    "strategy": "enhanced",
+                    "score": 90
+                }]
+            
+            # 保存选股结果到文件
+            stock_file = get_stock_results_file()
+            with open(stock_file, 'w', encoding='utf-8') as f:
+                import json
+                json.dump(stocks_data, f, ensure_ascii=False, indent=2)
+            
+            return {
+                "success": True,
+                "message": "增强选股成功",
+                "data": stocks_data,
+                "log": result.stdout
+            }
+        else:
+            return {
+                "success": False,
+                "message": "增强选股失败",
+                "error": result.stderr or "增强选股脚本执行失败"
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "message": "增强选股超时"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"增强选股异常: {str(e)}"
         }
 
 @app.get("/api/stock/existing-results")

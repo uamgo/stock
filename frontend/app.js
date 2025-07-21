@@ -8,6 +8,7 @@ class TailTradingApp {
             : '/api';  // 生产环境（通过nginx代理）
         this.token = localStorage.getItem('token');
         this.username = localStorage.getItem('username');
+        this.hasNewSelection = false; // 标记是否有新的选股结果
         this.init();
     }
 
@@ -39,6 +40,25 @@ class TailTradingApp {
             e.preventDefault();
             this.selectStocks();
         });
+
+        // 策略选择变化事件
+        document.getElementById('strategy').addEventListener('change', (e) => {
+            this.updateStrategyDescription(e.target.value);
+        });
+    }
+
+    // 更新策略描述
+    updateStrategyDescription(strategy) {
+        const descriptions = {
+            'smart': '智能选股：根据市场环境自动调整策略，适应性强，推荐使用',
+            'enhanced': '增强选股：结合放量回调和涨停逻辑，适合追求更高收益的投资者',
+            'select': '传统选股：基础选股策略，稳定可靠，适合保守投资者'
+        };
+        
+        const descElement = document.getElementById('strategyDescription');
+        if (descElement) {
+            descElement.textContent = descriptions[strategy] || '';
+        }
     }
 
     // 页面切换
@@ -67,8 +87,10 @@ class TailTradingApp {
             const nickname = localStorage.getItem('nickname') || this.username;
             document.getElementById('userInfo').textContent = `欢迎，${nickname}`;
         }
-        // 页面加载时检查已存在的选股结果
-        this.loadExistingStockResults();
+        // 页面加载时检查已存在的选股结果（只在首次加载时）
+        if (!this.hasNewSelection) {
+            this.loadExistingStockResults();
+        }
     }
 
     // API请求封装
@@ -179,58 +201,99 @@ class TailTradingApp {
 
         loading.classList.add('show');
         submitBtn.disabled = true;
-        this.addLog(`开始更新股票数据（TOP ${topN}）...`);
+        this.addLog(`🚀 开始更新股票数据（TOP ${topN}）...`);
+        this.addLog(`📡 正在连接数据源，请耐心等待...`);
 
         // 构造SSE请求，带鉴权
         const url = `${this.apiBase}/stock/update-stream?top_n=${topN}`;
+        
         // 关闭已有流
         if (this._eventSource) {
             this._eventSource.close();
         }
+        
+        // 添加超时处理
+        const timeoutId = setTimeout(() => {
+            this.addLog('⚠️ 数据更新超时，请检查网络连接或稍后重试');
+            loading.classList.remove('show');
+            submitBtn.disabled = false;
+        }, 300000); // 5分钟超时
+        
         // 通过 fetch + ReadableStream 实现带 Authorization 的 SSE
         fetch(url, {
             headers: {
                 'Authorization': `Bearer ${this.token}`
             }
         }).then(response => {
-            if (!response.body) throw new Error('SSE响应无内容');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            if (!response.body) {
+                throw new Error('SSE响应无内容');
+            }
+            
+            this.addLog('✅ 已连接到数据流，开始接收更新日志...');
+            
             const reader = response.body.getReader();
             let buffer = '';
             const utf8Decoder = new TextDecoder('utf-8');
+            let logCount = 0;
+            
             const processStream = () => reader.read().then(({done, value}) => {
-                if (done) return;
+                if (done) {
+                    clearTimeout(timeoutId);
+                    this.addLog('📡 数据流结束');
+                    loading.classList.remove('show');
+                    submitBtn.disabled = false;
+                    return;
+                }
+                
                 buffer += utf8Decoder.decode(value);
                 let lines = buffer.split('\n');
                 buffer = lines.pop();
+                
                 for (const line of lines) {
                     if (line.startsWith('data:')) {
                         try {
                             const data = JSON.parse(line.slice(5));
+                            logCount++;
+                            
                             if (data.type === 'start') {
-                                this.addLog(data.message);
+                                this.addLog(`🏁 ${data.message}`);
                             } else if (data.type === 'log') {
-                                this.addLog(data.message);
+                                // 添加日志计数器和更好的格式化
+                                const formattedMessage = data.message.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/, '');
+                                this.addLog(`📊 [${logCount}] ${formattedMessage || data.message}`);
                             } else if (data.type === 'success') {
-                                this.addLog(data.message);
+                                this.addLog(`🎉 ${data.message}`);
+                                clearTimeout(timeoutId);
                                 loading.classList.remove('show');
                                 submitBtn.disabled = false;
                                 reader.cancel();
                             } else if (data.type === 'error') {
-                                this.addLog(data.message);
+                                this.addLog(`❌ ${data.message}`);
+                                clearTimeout(timeoutId);
                                 loading.classList.remove('show');
                                 submitBtn.disabled = false;
                                 reader.cancel();
                             }
                         } catch (e) {
-                            this.addLog('日志解析异常: ' + e.message);
+                            this.addLog(`⚠️ 日志解析异常: ${e.message}`);
                         }
                     }
                 }
                 processStream();
+            }).catch(err => {
+                clearTimeout(timeoutId);
+                this.addLog(`❌ 读取数据流异常: ${err.message}`);
+                loading.classList.remove('show');
+                submitBtn.disabled = false;
             });
+            
             processStream();
         }).catch(err => {
-            this.addLog('SSE连接异常: ' + err.message);
+            clearTimeout(timeoutId);
+            this.addLog(`❌ SSE连接异常: ${err.message}`);
             loading.classList.remove('show');
             submitBtn.disabled = false;
         });
@@ -238,6 +301,7 @@ class TailTradingApp {
 
     // 股票选择
     async selectStocks() {
+        const strategy = document.getElementById('strategy').value;
         const preset = document.getElementById('preset').value;
         const limit = parseInt(document.getElementById('limit').value);
         const verbose = document.getElementById('verbose').checked;
@@ -248,15 +312,47 @@ class TailTradingApp {
             loading.classList.add('show');
             submitBtn.disabled = true;
 
-            this.addLog(`开始选股（策略：${preset}，数量：${limit}）...`);
+            // 强制清空股票表格
+            const tbody = document.querySelector('#stockTable tbody');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">正在选股中...</td></tr>';
 
-            const data = await this.apiRequest('/stock/select', {
+            // 根据策略类型显示不同的日志信息
+            const strategyNames = {
+                'smart': '智能选股',
+                'enhanced': '增强选股',
+                'select': '传统选股'
+            };
+
+            this.addLog(`🚀 开始${strategyNames[strategy]}（风险偏好：${preset}，数量：${limit}）...`);
+
+            // 根据策略选择不同的API端点
+            let apiEndpoint;
+            let requestBody;
+
+            switch (strategy) {
+                case 'smart':
+                    apiEndpoint = '/stock/smart-select';
+                    requestBody = { preset, limit, verbose };
+                    break;
+                case 'enhanced':
+                    apiEndpoint = '/stock/enhanced-select';
+                    requestBody = { preset, limit, verbose };
+                    break;
+                case 'select':
+                default:
+                    apiEndpoint = '/stock/select';
+                    requestBody = { preset, limit, verbose };
+                    break;
+            }
+
+            const data = await this.apiRequest(apiEndpoint, {
                 method: 'POST',
-                body: JSON.stringify({ preset, limit, verbose })
+                body: JSON.stringify(requestBody)
             });
 
             if (data.success) {
                 this.addLog('选股完成！');
+                this.hasNewSelection = true; // 标记有新的选股结果
                 
                 // 添加调试信息
                 console.log('选股API返回数据:', data);
@@ -306,45 +402,62 @@ class TailTradingApp {
 
     // 显示股票结果
     displayStocks(stocks) {
+        console.log('=== displayStocks 开始执行 ===');
         console.log('displayStocks被调用，股票数据:', stocks);
+        console.log('stocks类型:', typeof stocks);
+        console.log('stocks是否为数组:', Array.isArray(stocks));
         this.addLog(`🔍 开始显示股票数据，共 ${stocks ? stocks.length : 0} 只`);
         
         const tbody = document.querySelector('#stockTable tbody');
+        
+        // 强制清空之前的内容
+        console.log('清空之前的tbody内容...');
         tbody.innerHTML = '';
+        
+        // 添加一个短暂延迟确保DOM更新
+        setTimeout(() => {
+            console.log('tbody已清空，开始填充新数据...');
+            
+            if (!stocks || stocks.length === 0) {
+                console.log('股票数据为空，显示暂无数据消息');
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
+                this.addLog('❌ 股票数据为空，显示暂无数据');
+                return;
+            }
 
-        if (!stocks || stocks.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
-            this.addLog('❌ 股票数据为空，显示暂无数据');
-            return;
-        }
+            // 清空现有数据的确认
+            this.addLog(`🗑️ 已清空旧数据，准备显示 ${stocks.length} 只新股票`);
 
-        stocks.forEach((stock, index) => {
-            console.log(`处理第${index + 1}只股票:`, stock);
-            
-            const row = document.createElement('tr');
-            // 适配后端返回的中文字段名
-            const code = stock.代码 || stock.code || '-';
-            const name = stock.名称 || stock.name || '-';
-            const probability = stock.次日补涨概率 || stock.probability_score || '-';
-            const risk = stock.风险评分 || stock.risk_level || '-';
-            const action = stock.操作建议 || stock.action || '买入';
-            
-            this.addLog(`📊 股票${index + 1}: ${code} ${name}`);
-            
-            // 生成东方财富链接
-            const eastmoneyUrl = this.generateEastmoneyUrl(code);
-            
-            row.innerHTML = `
-                <td><a href="${eastmoneyUrl}" target="_blank" class="stock-code-link">${code}</a></td>
-                <td>${name}</td>
-                <td>${typeof probability === 'number' ? probability.toFixed(2) + '%' : probability}</td>
-                <td>${typeof risk === 'number' ? risk.toFixed(2) : risk}</td>
-                <td>${action}</td>
-            `;
-            tbody.appendChild(row);
-        });
+            stocks.forEach((stock, index) => {
+                console.log(`处理第${index + 1}只股票:`, stock);
+                console.log(`股票对象的所有键:`, Object.keys(stock));
+                
+                const row = document.createElement('tr');
+                // 适配后端返回的中文字段名 - 增加更多可能的字段名
+                const code = stock.代码 || stock.code || stock.股票代码 || stock.symbol || '-';
+                const name = stock.名称 || stock.name || stock.股票名称 || '-';
+                const probability = stock.次日补涨概率 || stock.probability_score || stock.概率分数 || stock.score || stock.技术评分 || stock.适应性评分 || stock.增强评分 || '-';
+                const risk = stock.风险评分 || stock.risk_level || stock.风险等级 || stock.risk || '-';
+                const action = stock.操作建议 || stock.action || stock.建议 || stock.选股类型 || '买入';
+                
+                this.addLog(`📊 股票${index + 1}: ${code} ${name} 评分:${probability} 类型:${action}`);
+                
+                // 生成东方财富链接
+                const eastmoneyUrl = this.generateEastmoneyUrl(code);
+                
+                row.innerHTML = `
+                    <td><a href="${eastmoneyUrl}" target="_blank" class="stock-code-link">${code}</a></td>
+                    <td>${name}</td>
+                    <td>${typeof probability === 'number' ? probability.toFixed(2) + '%' : probability}</td>
+                    <td>${typeof risk === 'number' ? risk.toFixed(2) : risk}</td>
+                    <td>${action}</td>
+                `;
+                tbody.appendChild(row);
+            });
 
-        this.addLog(`✅ 成功显示 ${stocks.length} 只股票的选择结果`);
+            this.addLog(`✅ 成功显示 ${stocks.length} 只股票的选择结果`);
+            console.log('=== displayStocks 执行完成 ===');
+        }, 100); // 100ms延迟确保DOM清空
     }
 
     // 生成东方财富股票链接
@@ -463,8 +576,23 @@ class TailTradingApp {
     addLog(message) {
         const logOutput = document.getElementById('logOutput');
         const timestamp = new Date().toLocaleString();
+        
+        // 优化性能：限制日志行数，避免过多日志导致页面卡顿
+        const maxLines = 1000;
+        const lines = logOutput.textContent.split('\n');
+        if (lines.length > maxLines) {
+            // 保留最新的 800 行
+            logOutput.textContent = lines.slice(-800).join('\n') + '\n';
+        }
+        
+        // 添加新日志
         logOutput.textContent += `[${timestamp}] ${message}\n`;
+        
+        // 自动滚动到底部
         logOutput.scrollTop = logOutput.scrollHeight;
+        
+        // 同时输出到控制台，便于调试
+        console.log(`[${timestamp}] ${message}`);
     }
 
     clearLogs() {

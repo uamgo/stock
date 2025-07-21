@@ -9,6 +9,12 @@ import asyncio
 import sys
 from pathlib import Path
 
+# 添加项目根目录到 Python 路径
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from data.est.req.est_prepare_data import EstStockPipeline
+
 def add_update_parser(subparsers):
     """添加数据更新命令解析器"""
     parser = subparsers.add_parser(
@@ -103,64 +109,47 @@ def execute_update(args) -> int:
         return 1
 
 async def run_update_pipeline(pipeline, args):
-    """运行数据更新管道"""
-    import time
+    """运行完整的数据更新管道"""
     
-    start_time = time.time()
+    print("开始运行数据更新管道...")
     
-    # 步骤1: 获取top N概念板块
+    # 步骤1: 获取前N涨幅概念板块代码
     print(f"📊 步骤1: 获取TOP {args.top_n}涨幅概念板块...")
     concept_codes = await pipeline.get_top_n_concepts()
     print(f"✓ 获取到 {len(concept_codes)} 个概念板块")
     
-    # 步骤2: 获取所有成员股票
+    # 步骤1.5: 更新概念板块成员数据
+    print("📈 步骤1.5: 更新概念板块成员数据...")
+    pipeline.concept_manager.update_all_concepts(concept_codes, use_proxy_and_concurrent=5)
+    print("✓ 概念板块成员数据更新完成")
+    
+    # 步骤2: 获取所有成员股票数据
     print("📈 步骤2: 获取板块成员股票...")
     members_df = pipeline.get_all_members(concept_codes)
-    if members_df.empty:
+    
+    if members_df is None or members_df.empty:
         print("❌ 未获取到有效的成员股票")
         return
+    
     print(f"✓ 获取到 {len(members_df)} 只成员股票")
     
-    # 步骤3: 保存成员数据
-    print("💾 步骤3: 保存成员数据...")
-    # 直接使用est_common保存数据
-    from data.est.req import est_common
+    # 保存成员股票数据
     from data.est.req.est_prepare_data import MEMBERS_DF_PATH
+    from data.est.req import est_common
     est_common.save_df_to_file(members_df, MEMBERS_DF_PATH)
-    print("✓ 成员数据已保存")
+    print(f"✓ 已保存成员股票数据到 {MEMBERS_DF_PATH}")
     
-    # 步骤4: 更新日线数据
-    print("📊 步骤4: 更新日线数据...")
-    await pipeline.update_daily_for_members(
-        members_df, 
-        use_proxy_and_concurrent=args.concurrent
-    )
+    # 步骤3: 更新日线数据
+    print("📊 步骤3: 更新股票日线数据...")
+    await pipeline.update_daily_for_members(members_df)
     print("✓ 日线数据更新完成")
     
-    # 步骤5: 更新分钟线数据（如果需要）
-    if not args.daily_only and not args.skip_minute:
-        print("⏱️  步骤5: 更新分钟线数据...")
-        await pipeline.update_minute_for_members(
-            members_df,
-            use_proxy_and_concurrent=args.concurrent
-        )
+    # 步骤4: 更新分钟线数据（如果未跳过）
+    if not (args.daily_only or args.skip_minute):
+        print("📊 步骤4: 更新股票分钟线数据...")
+        await pipeline.update_minute_for_members(members_df)
         print("✓ 分钟线数据更新完成")
     else:
-        print("⏭️  步骤5: 跳过分钟线数据更新")
+        print("⏭️ 跳过分钟线数据更新")
     
-    # 显示统计信息
-    elapsed_time = time.time() - start_time
-    print(f"\n📊 更新统计:")
-    print(f"  • 板块数量: {len(concept_codes)}")
-    print(f"  • 股票数量: {len(members_df)}")
-    print(f"  • 总耗时: {elapsed_time:.2f} 秒")
-    
-    # 显示部分股票信息
-    if len(members_df) > 0:
-        print(f"\n📋 部分股票信息:")
-        display_count = min(10, len(members_df))
-        for i, (_, row) in enumerate(members_df.head(display_count).iterrows()):
-            print(f"  {i+1}. {row.get('名称', 'N/A')} ({row.get('代码', 'N/A')})")
-        
-        if len(members_df) > display_count:
-            print(f"  ... 及其他 {len(members_df) - display_count} 只股票")
+    print("🎉 数据更新管道执行完成！")
