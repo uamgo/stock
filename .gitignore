@@ -93,6 +93,14 @@ essential-files.tar.gz
 /docs/temp/
 /docs/drafts/
 /docs/*.tmp.md
+/docs/deployment/
+/docs/reports/
+
+# 脚本目录保护
+/scripts/testing/
+/scripts/development/
+/scripts/maintenance/
+/scripts/deployment/
 
 # 部署相关文档（临时生成）
 *_DEPLOYMENT_*.md
