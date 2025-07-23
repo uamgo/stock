@@ -34,17 +34,48 @@ class EstStockPipeline:
         self.cache_dir = DATA_DIR / "cache"
         self.cache_dir.mkdir(exist_ok=True)
 
+    def is_market_open(self) -> bool:
+        """检查A股市场是否开放"""
+        from datetime import datetime, time
+        now = datetime.now().time()
+        # A股交易时间: 9:30-11:30, 13:00-15:00
+        return (time(9, 30) <= now <= time(11, 30)) or (time(13, 0) <= now <= time(15, 0))
+    
+    def get_cache_duration(self) -> int:
+        """根据市场状态获取缓存时长(秒)"""
+        if self.is_market_open():
+            return 1800  # 交易中: 30分钟缓存
+        else:
+            return 14400  # 收盘后: 4小时缓存 (避免频繁重算)
+    
+    def get_market_status(self) -> str:
+        """获取市场状态描述"""
+        from datetime import datetime, time
+        now = datetime.now().time()
+        
+        if time(9, 30) <= now <= time(11, 30):
+            return "上午交易中"
+        elif time(11, 30) < now < time(13, 0):
+            return "午间休市"
+        elif time(13, 0) <= now <= time(15, 0):
+            return "下午交易中"
+        else:
+            return "收盘后"
+
     async def get_top_n_concepts(self) -> List[str]:
         # 检查缓存
         concepts_cache_path = self.cache_dir / "top_concepts.pkl"
         if concepts_cache_path.exists():
             mtime = os.path.getmtime(concepts_cache_path)
-            # 如果缓存文件在30分钟内，直接使用
-            if (datetime.now().timestamp() - mtime) < 1800:  # 30分钟
+            # 根据市场状态动态调整缓存时长
+            cache_duration = self.get_cache_duration()
+            if (datetime.now().timestamp() - mtime) < cache_duration:
                 try:
                     cached_df = est_common.load_df_from_file(str(concepts_cache_path))
                     if not cached_df.empty and '热度分数' in cached_df.columns:
-                        print(f"使用缓存的概念板块数据，缓存时间: {datetime.fromtimestamp(mtime).strftime('%H:%M:%S')}")
+                        market_status = self.get_market_status()
+                        cache_age_minutes = (datetime.now().timestamp() - mtime) / 60
+                        print(f"使用缓存的概念板块数据 [{market_status}]，缓存时间: {datetime.fromtimestamp(mtime).strftime('%H:%M:%S')} (已缓存{cache_age_minutes:.0f}分钟)")
                         return cached_df.nlargest(self.top_n, "热度分数")["代码"].tolist()
                 except Exception as e:
                     print(f"读取概念缓存失败: {e}")
@@ -55,7 +86,8 @@ class EstStockPipeline:
             raise RuntimeError("未能获取概念板块数据")
         
         # 使用新的4维度评分体系计算热度
-        print("🔥 正在计算概念热度...")
+        market_status = self.get_market_status()
+        print(f"🔥 正在计算概念热度... [{market_status}]")
         df = self.calculate_concept_heat(df)
         
         # 保存到缓存
@@ -66,7 +98,8 @@ class EstStockPipeline:
         
         # 显示热度排名前几名
         top_concepts = df.nlargest(min(5, len(df)), "热度分数")
-        print("📊 热度排名TOP5:")
+        cache_info = f"[{market_status}]" + (f" 缓存{self.get_cache_duration()//3600}小时" if not self.is_market_open() else "")
+        print(f"📊 热度排名TOP5 {cache_info}:")
         for _, concept in top_concepts.iterrows():
             print(f"  {concept['名称']:<15} | 涨跌: {concept['涨跌幅']:>6.2f}% | 热度: {concept['热度分数']:>5.1f}分")
         
