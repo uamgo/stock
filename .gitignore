@@ -115,8 +115,12 @@ concept_heat_explainer_v2.py
 method_comparison.py
 data_check.py
 test_stream.sh
+test_cache_clear.py
+test_concept_api.py
+test_frontend_server.py
 
 # 新增：部署相关
 deploy_production.sh
+deploy_cache_feature.sh
 backend-deploy.tar.gz
 frontend-deploy.tar.gz

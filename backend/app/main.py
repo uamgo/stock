@@ -19,6 +19,9 @@ import subprocess
 from datetime import datetime, timedelta
 import asyncio
 import json
+import shutil
+import glob
+import pandas as pd
 
 from .auth import UserManager, UserCreate, UserUpdate
 from .jwt_auth import jwt_manager
@@ -300,6 +303,147 @@ async def update_stock_data_stream(top_n: int = 10, current_user: str = Depends(
             "Access-Control-Allow-Headers": "Authorization"
         }
     )
+
+@app.post("/api/stock/clear-cache")
+async def clear_cache(current_user: str = Depends(get_current_user)):
+    """清理缓存数据"""
+    try:
+        cache_dirs = [
+            "/tmp/stock",
+            "/tmp/stock_cache", 
+            "/tmp/cache",
+            "/tmp/concept_cache"
+        ]
+        
+        cleared_dirs = []
+        total_size = 0
+        
+        for cache_dir in cache_dirs:
+            if os.path.exists(cache_dir):
+                # 计算目录大小
+                dir_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+                             for dirpath, dirnames, filenames in os.walk(cache_dir)
+                             for filename in filenames)
+                total_size += dir_size
+                
+                # 删除目录
+                shutil.rmtree(cache_dir)
+                cleared_dirs.append(f"{cache_dir} ({dir_size / 1024 / 1024:.1f}MB)")
+        
+        # 清理项目根目录下的临时文件
+        temp_patterns = [
+            os.path.join(project_root, "*.tmp"),
+            os.path.join(project_root, "*.cache"),
+            os.path.join(project_root, "smart_selection_*.json"),
+            os.path.join(project_root, "health_check_*.json"),
+            os.path.join(project_root, "update_result_*.json"),
+            os.path.join(project_root, "validation_report_*.json")
+        ]
+        
+        cleared_files = []
+        for pattern in temp_patterns:
+            for file_path in glob.glob(pattern):
+                file_size = os.path.getsize(file_path)
+                total_size += file_size
+                os.remove(file_path)
+                cleared_files.append(f"{os.path.basename(file_path)} ({file_size / 1024:.1f}KB)")
+        
+        message = f"🧹 缓存清理完成！\n"
+        if cleared_dirs:
+            message += f"📁 清理目录: {', '.join(cleared_dirs)}\n"
+        if cleared_files:
+            message += f"📄 清理文件: {', '.join(cleared_files)}\n"
+        message += f"💾 总计释放空间: {total_size / 1024 / 1024:.1f}MB"
+        
+        return {
+            "success": True,
+            "message": message,
+            "details": {
+                "cleared_dirs": len(cleared_dirs),
+                "cleared_files": len(cleared_files),
+                "total_size_mb": round(total_size / 1024 / 1024, 1)
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"❌ 缓存清理失败: {str(e)}"
+        }
+
+@app.post("/api/stock/clear-disk-data")
+async def clear_disk_data(current_user: str = Depends(get_current_user)):
+    """清理磁盘数据文件"""
+    try:
+        data_dirs = [
+            os.path.join(project_root, "data", "cache"),
+            os.path.join(project_root, "data", "exports"),
+            os.path.join(project_root, "logs")
+        ]
+        
+        cleared_items = []
+        total_size = 0
+        
+        for data_dir in data_dirs:
+            if os.path.exists(data_dir):
+                # 清理目录内容但保留目录结构
+                for item in os.listdir(data_dir):
+                    item_path = os.path.join(data_dir, item)
+                    if os.path.isfile(item_path):
+                        # 保留最近的日志文件（最近3天）
+                        if data_dir.endswith("logs") and item.endswith(".log"):
+                            file_mtime = os.path.getmtime(item_path)
+                            if (datetime.now().timestamp() - file_mtime) < 3 * 24 * 3600:  # 3天
+                                continue
+                        
+                        file_size = os.path.getsize(item_path)
+                        total_size += file_size
+                        os.remove(item_path)
+                        cleared_items.append(f"{item} ({file_size / 1024:.1f}KB)")
+                    elif os.path.isdir(item_path):
+                        dir_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+                                     for dirpath, dirnames, filenames in os.walk(item_path)
+                                     for filename in filenames)
+                        total_size += dir_size
+                        shutil.rmtree(item_path)
+                        cleared_items.append(f"{item}/ ({dir_size / 1024 / 1024:.1f}MB)")
+        
+        # 清理临时输出目录（/tmp下的日期目录）
+        import re
+        date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        for item in os.listdir("/tmp"):
+            if date_pattern.match(item):
+                item_path = os.path.join("/tmp", item)
+                if os.path.isdir(item_path):
+                    dir_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+                                 for dirpath, dirnames, filenames in os.walk(item_path)
+                                 for filename in filenames)
+                    total_size += dir_size
+                    shutil.rmtree(item_path)
+                    cleared_items.append(f"临时目录 {item}/ ({dir_size / 1024 / 1024:.1f}MB)")
+        
+        message = f"🗂️ 磁盘数据清理完成！\n"
+        if cleared_items:
+            message += f"📋 清理项目: {', '.join(cleared_items[:10])}"  # 只显示前10项
+            if len(cleared_items) > 10:
+                message += f" 等{len(cleared_items)}项"
+            message += f"\n"
+        message += f"💾 总计释放空间: {total_size / 1024 / 1024:.1f}MB"
+        
+        return {
+            "success": True,
+            "message": message,
+            "details": {
+                "cleared_items": len(cleared_items),
+                "total_size_mb": round(total_size / 1024 / 1024, 1)
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"❌ 磁盘数据清理失败: {str(e)}"
+        }
 
 @app.post("/api/stock/select")
 async def select_stocks(request: SelectStocksRequest, current_user: str = Depends(get_current_user)):
@@ -598,6 +742,56 @@ async def get_existing_stock_results(current_user: str = Depends(get_current_use
         return {
             "success": False,
             "message": f"加载选股结果失败: {str(e)}",
+            "data": []
+        }
+
+@app.get("/api/stock/top-concepts")
+async def get_top_concepts(n: int = 20, current_user: str = Depends(get_current_user)):
+    """获取Top N概念股数据"""
+    try:
+        # 查找最新的概念热度分析文件
+        concept_files = glob.glob("/tmp/stock/concept_heat_analysis_*.csv")
+        
+        if not concept_files:
+            return {
+                "success": False,
+                "message": "暂无概念股数据，请先更新数据",
+                "data": []
+            }
+        
+        # 获取最新的文件
+        latest_file = max(concept_files, key=os.path.getmtime)
+        
+        # 读取CSV文件
+        df = pd.read_csv(latest_file)
+        
+        # 获取Top N数据
+        top_concepts = df.head(n)
+        
+        # 转换为前端需要的格式
+        concepts_data = []
+        for idx, row in top_concepts.iterrows():
+            concepts_data.append({
+                "rank": idx + 1,
+                "concept": row.get("概念名称", ""),
+                "heat_score": round(row.get("热度分数", 0), 2),
+                "change_pct": f"{row.get('平均涨幅(%)', 0):.2f}%"
+            })
+        
+        file_time = datetime.fromtimestamp(os.path.getmtime(latest_file))
+        
+        return {
+            "success": True,
+            "message": f"获取Top {len(concepts_data)}概念股成功",
+            "data": concepts_data,
+            "update_time": file_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_count": len(df)
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取概念股数据失败: {str(e)}",
             "data": []
         }
 

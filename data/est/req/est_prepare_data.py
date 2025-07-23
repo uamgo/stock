@@ -103,6 +103,30 @@ class EstStockPipeline:
         for _, concept in top_concepts.iterrows():
             print(f"  {concept['名称']:<15} | 涨跌: {concept['涨跌幅']:>6.2f}% | 热度: {concept['热度分数']:>5.1f}分")
         
+        # 保存概念股热度分析CSV文件供前端API使用
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            csv_filename = f"/tmp/stock/concept_heat_analysis_{timestamp}.csv"
+            
+            # 选择前端需要的列并重命名
+            frontend_df = df[['名称', '涨跌幅', '热度分数', '热度等级']].copy()
+            frontend_df.rename(columns={
+                '名称': '概念名称',
+                '涨跌幅': '平均涨幅(%)',
+                '热度分数': '热度分数',
+                '热度等级': '热度等级'
+            }, inplace=True)
+            
+            # 按热度分数降序排列
+            frontend_df = frontend_df.sort_values('热度分数', ascending=False)
+            
+            # 保存CSV文件
+            frontend_df.to_csv(csv_filename, index=False, encoding='utf-8')
+            print(f"✅ 概念股热度分析已保存: {csv_filename}")
+            
+        except Exception as e:
+            print(f"⚠️ 保存概念股热度分析CSV失败: {e}")
+        
         return df.nlargest(self.top_n, "热度分数")["代码"].tolist()
     
     def calculate_concept_heat(self, df: pd.DataFrame) -> pd.DataFrame:

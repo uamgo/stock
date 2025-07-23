@@ -87,9 +87,10 @@ class TailTradingApp {
             const nickname = localStorage.getItem('nickname') || this.username;
             document.getElementById('userInfo').textContent = `欢迎，${nickname}`;
         }
-        // 页面加载时检查已存在的选股结果（只在首次加载时）
+        // 页面加载时检查已存在的选股结果和概念股数据（只在首次加载时）
         if (!this.hasNewSelection) {
             this.loadExistingStockResults();
+            this.loadTopConcepts(true); // 静默加载概念股数据，不显示日志
         }
     }
 
@@ -270,6 +271,11 @@ class TailTradingApp {
                                 loading.classList.remove('show');
                                 submitBtn.disabled = false;
                                 reader.cancel();
+                                
+                                // 数据更新成功后，自动加载概念股数据
+                                setTimeout(() => {
+                                    this.loadTopConcepts();
+                                }, 1000); // 延迟1秒确保数据文件生成完成
                             } else if (data.type === 'error') {
                                 this.addLog(`❌ ${data.message}`);
                                 clearTimeout(timeoutId);
@@ -297,6 +303,146 @@ class TailTradingApp {
             loading.classList.remove('show');
             submitBtn.disabled = false;
         });
+    }
+
+    // 清理缓存
+    async clearCache() {
+        try {
+            this.addLog('🧹 开始清理缓存...');
+            
+            const data = await this.apiRequest('/stock/clear-cache', {
+                method: 'POST'
+            });
+            
+            if (data.success) {
+                this.addLog(data.message);
+            } else {
+                this.addLog(`❌ 缓存清理失败: ${data.message}`);
+            }
+        } catch (error) {
+            this.addLog(`❌ 缓存清理异常: ${error.message}`);
+        }
+    }
+
+    // 清理磁盘数据
+    async clearDiskData() {
+        // 添加确认对话框
+        if (!confirm('⚠️ 确定要清理磁盘数据吗？\n\n这将删除：\n• 历史数据文件\n• 导出文件\n• 日志文件（保留最近3天）\n• 临时输出目录\n\n此操作不可恢复！')) {
+            return;
+        }
+        
+        try {
+            this.addLog('🗂️ 开始清理磁盘数据...');
+            
+            const data = await this.apiRequest('/stock/clear-disk-data', {
+                method: 'POST'
+            });
+            
+            if (data.success) {
+                this.addLog(data.message);
+            } else {
+                this.addLog(`❌ 磁盘数据清理失败: ${data.message}`);
+            }
+        } catch (error) {
+            this.addLog(`❌ 磁盘数据清理异常: ${error.message}`);
+        }
+    }
+
+    // 获取和显示Top N概念股
+    async loadTopConcepts(silent = false) {
+        try {
+            const topN = parseInt(document.getElementById('topN').value) || 20;
+            if (!silent) {
+                this.addLog(`📊 正在获取Top ${topN}概念股数据...`);
+            }
+            
+            const data = await this.apiRequest(`/stock/top-concepts?n=${topN}`, {
+                method: 'GET'
+            });
+            
+            if (data.success && data.data.length > 0) {
+                this.displayConceptStocks(data.data, data.update_time);
+                if (!silent) {
+                    this.addLog(`✅ ${data.message}，更新时间: ${data.update_time}`);
+                }
+            } else {
+                if (!silent) {
+                    this.addLog(`⚠️ ${data.message}`);
+                }
+                this.hideConceptStocks();
+            }
+        } catch (error) {
+            if (!silent) {
+                this.addLog(`❌ 获取概念股数据异常: ${error.message}`);
+            }
+            this.hideConceptStocks();
+        }
+    }
+
+    // 显示概念股数据
+    displayConceptStocks(concepts, updateTime) {
+        const card = document.getElementById('conceptStocksCard');
+        const tbody = document.querySelector('#conceptStocksTable tbody');
+        const countBadge = document.getElementById('conceptStocksCount');
+        
+        // 清空现有数据
+        tbody.innerHTML = '';
+        
+        // 填充数据
+        concepts.forEach(concept => {
+            const row = document.createElement('tr');
+            
+            // 根据热度分数设置行的颜色
+            let rowClass = '';
+            if (concept.heat_score >= 80) {
+                rowClass = 'table-danger'; // 红色 - 极热
+            } else if (concept.heat_score >= 60) {
+                rowClass = 'table-warning'; // 黄色 - 热门
+            } else if (concept.heat_score >= 40) {
+                rowClass = 'table-info'; // 蓝色 - 温和
+            }
+            
+            if (rowClass) {
+                row.className = rowClass;
+            }
+            
+            row.innerHTML = `
+                <td class="text-center fw-bold">${concept.rank}</td>
+                <td title="${concept.concept}">${concept.concept}</td>
+                <td class="text-center">
+                    <span class="badge bg-primary">${concept.heat_score}</span>
+                </td>
+                <td class="text-center ${parseFloat(concept.change_pct) >= 0 ? 'text-success' : 'text-danger'}">
+                    ${concept.change_pct}
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+        
+        // 更新计数
+        countBadge.textContent = concepts.length;
+        
+        // 卡片始终显示，不需要控制显示/隐藏
+        
+        // 更新卡片标题时间戳
+        const header = card.querySelector('.card-header span:first-child');
+        header.innerHTML = `<i class="bi bi-bar-chart-line"></i> Top N 概念股 <small class="text-muted">(${updateTime})</small>`;
+    }
+
+    // 重置概念股显示
+    hideConceptStocks() {
+        const tbody = document.querySelector('#conceptStocksTable tbody');
+        const countBadge = document.getElementById('conceptStocksCount');
+        
+        // 重置为初始状态，但保持卡片可见
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无数据，请先更新数据</td></tr>';
+        countBadge.textContent = '0';
+        
+        // 重置卡片标题
+        const card = document.getElementById('conceptStocksCard');
+        const header = card.querySelector('.card-header span:first-child');
+        header.innerHTML = '<i class="bi bi-bar-chart-line"></i> Top N 概念股';
     }
 
     // 股票选择
@@ -767,5 +913,19 @@ async function changePassword() {
         document.getElementById('changePasswordForm').reset();
     } catch (error) {
         app.addLog(`密码修改失败: ${error.message}`);
+    }
+}
+
+// 全局函数 - 清理缓存
+async function clearCache() {
+    if (app) {
+        await app.clearCache();
+    }
+}
+
+// 全局函数 - 清理磁盘数据
+async function clearDiskData() {
+    if (app) {
+        await app.clearDiskData();
     }
 }
