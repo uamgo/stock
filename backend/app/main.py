@@ -39,6 +39,42 @@ def get_stock_results_file():
     output_dir = get_date_output_dir()
     return os.path.join(output_dir, "selected_stocks.txt")
 
+def get_strategy_results_file(strategy):
+    """获取特定策略的选股结果文件路径"""
+    output_dir = get_date_output_dir()
+    strategy_files = {
+        'smart': 'smart_selected_stocks.json',
+        'enhanced': 'enhanced_selected_stocks.json',
+        'select': 'traditional_selected_stocks.json'
+    }
+    filename = strategy_files.get(strategy, f'{strategy}_selected_stocks.json')
+    return os.path.join(output_dir, filename)
+
+def save_strategy_results(strategy, stocks_data):
+    """保存特定策略的选股结果"""
+    try:
+        file_path = get_strategy_results_file(strategy)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(stocks_data, f, ensure_ascii=False, indent=2)
+        print(f"已保存{strategy}策略结果到: {file_path}")
+        return True
+    except Exception as e:
+        print(f"保存{strategy}策略结果失败: {e}")
+        return False
+
+def load_strategy_results(strategy):
+    """加载特定策略的选股结果"""
+    file_path = get_strategy_results_file(strategy)
+    if not os.path.exists(file_path):
+        return []
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载{strategy}策略结果失败: {e}")
+        return []
+
 def load_existing_stocks():
     """加载已存在的选股结果"""
     stock_file = get_stock_results_file()
@@ -482,6 +518,9 @@ async def select_stocks(request: SelectStocksRequest, current_user: str = Depend
                     json.dump(stocks_data, f, ensure_ascii=False, indent=2)
                 print(f"选股结果已保存到: {stock_file}")
                 
+                # 同时保存到传统选股策略文件
+                save_strategy_results('select', stocks_data)
+                
                 return {
                     "success": True,
                     "message": "选股成功",
@@ -510,6 +549,9 @@ async def select_stocks(request: SelectStocksRequest, current_user: str = Depend
                         with open(stock_file, 'w', encoding='utf-8') as f:
                             json.dump(stocks_data, f, ensure_ascii=False, indent=2)
                         print(f"选股结果已保存到: {stock_file}")
+                        
+                        # 同时保存到传统选股策略文件
+                        save_strategy_results('select', stocks_data)
                         
                         return {
                             "success": True,
@@ -587,6 +629,9 @@ async def smart_select_stocks(request: SelectStocksRequest, current_user: str = 
                     stock_file = get_stock_results_file()
                     with open(stock_file, 'w', encoding='utf-8') as f:
                         json.dump(stocks_data, f, ensure_ascii=False, indent=2)
+                    
+                    # 同时保存到智能选股策略文件
+                    save_strategy_results('smart', stocks_data)
                     
                     return {
                         "success": True,
@@ -666,6 +711,9 @@ async def enhanced_select_stocks(request: SelectStocksRequest, current_user: str
                     # 提取stocks字段作为data
                     stocks_data = parsed_output.get('stocks', [])
                     
+                    # 保存到增强选股策略文件
+                    save_strategy_results('enhanced', stocks_data)
+                    
                     return {
                         "success": True,
                         "message": "增强选股成功",
@@ -743,6 +791,32 @@ async def get_existing_stock_results(current_user: str = Depends(get_current_use
             "success": False,
             "message": f"加载选股结果失败: {str(e)}",
             "data": []
+        }
+
+@app.get("/api/stock/strategy-results")
+async def get_strategy_results(current_user: str = Depends(get_current_user)):
+    """获取所有策略的选股结果"""
+    try:
+        strategies = ['smart', 'enhanced', 'select']
+        results = {}
+        
+        for strategy in strategies:
+            stocks = load_strategy_results(strategy)
+            results[strategy] = {
+                "count": len(stocks),
+                "data": stocks
+            }
+        
+        return {
+            "success": True,
+            "message": "策略结果加载完成",
+            "data": results
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"加载策略结果失败: {str(e)}",
+            "data": {}
         }
 
 @app.get("/api/stock/top-concepts")

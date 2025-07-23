@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tail Trading - 股票交易系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .card-header {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .table-responsive {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .stock-results-table {
+            height: 50vh;
+            overflow-y: auto;
+        }
+        .stock-code-link {
+            color: #0d6efd;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .stock-code-link:hover {
+            color: #0a58ca;
+            text-decoration: underline;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        .log-output {
+            background-color: #f8f9fa;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .status-running {
+            color: #0d6efd; /* 改为蓝色 */
+        }
+        .status-stopped {
+            color: #dc3545;
+        }
+        .hidden {
+            display: none;
+        }
+        .concept-stocks-table {
+            height: 300px;
+            overflow-y: auto;
+        }
+        
+        /* 重复股票背景色样式 */
+        .stock-duplicate-2 {
+            background-color: #ffe6e6 !important; /* 浅红色 - 命中2个tab */
+            color: #333333 !important;
+        }
+        .stock-duplicate-3 {
+            background-color: #ffcccc !important; /* 较深红色 - 命中3个tab */
+            color: #000000 !important;
+            font-weight: 500;
+        }
+        
+        /* 确保链接在有背景色时仍可见 */
+        .stock-duplicate-2 .stock-code-link,
+        .stock-duplicate-3 .stock-code-link {
+            color: #0066cc !important;
+            font-weight: 600;
+        }
+        
+        .stock-duplicate-2 .stock-code-link:hover,
+        .stock-duplicate-3 .stock-code-link:hover {
+            color: #004499 !important;
+        }
+        
+        /* 中国股市颜色惯例：红涨绿跌 */
+        .text-rise {
+            color: #dc3545 !important; /* 红色表示上涨 */
+        }
+        .text-fall {
+            color: #28a745 !important; /* 绿色表示下跌 */
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-graph-up"></i>
+                Tail Trading
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3" id="userInfo"></span>
+                <div class="dropdown me-2" id="userSettingsDropdown" style="display: none;">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-gear"></i> 个人设置
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="#" onclick="showUserSettings()">
+                            <i class="bi bi-person-circle"></i> 修改资料
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="showChangePassword()">
+                            <i class="bi bi-key"></i> 修改密码
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="logout()">
+                            <i class="bi bi-box-arrow-right"></i> 退出登录
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 登录界面 -->
+    <div id="loginPage" class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header text-center">
+                        <h4><i class="bi bi-shield-lock"></i> 系统登录</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="loginForm">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">用户名</label>
+                                <input type="text" class="form-control" id="username" value="admin" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">密码</label>
+                                <input type="password" class="form-control" id="password" value="admin000" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <span class="loading spinner-border spinner-border-sm" role="status"></span>
+                                登录
+                            </button>
+                        </form>
+                        <div id="loginError" class="alert alert-danger mt-3 hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="mainPage" class="container-fluid mt-4 hidden">
+        <div class="row">
+            <!-- 左侧控制面板 -->
+            <div class="col-md-4">
+                <!-- 数据更新 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-arrow-clockwise"></i> 数据更新
+                    </div>
+                    <div class="card-body">
+                        <form id="updateForm">
+                            <div class="mb-3">
+                                <label for="topN" class="form-label">更新股票数量</label>
+                                <input type="number" class="form-control" id="topN" value="10" min="1" max="100">
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100 mb-2">
+                                <span class="loading spinner-border spinner-border-sm" role="status"></span>
+                                <i class="bi bi-download"></i> 更新数据
+                            </button>
+                        </form>
+                        
+                        <!-- 缓存管理按钮组 -->
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" class="btn btn-outline-warning btn-sm" onclick="clearCache()">
+                                <i class="bi bi-trash3"></i> 清理缓存
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearDiskData()">
+                                <i class="bi bi-hdd"></i> 清理磁盘数据
+                            </button>
+                        </div>
+                        <div class="form-text mt-2">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> 
+                                缓存清理：清理临时缓存文件<br>
+                                磁盘数据清理：清理历史数据和日志文件
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 股票选择 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-search"></i> 股票选择
+                    </div>
+                    <div class="card-body">
+                        <form id="selectForm">
+                            <div class="mb-3">
+                                <label for="strategy" class="form-label">选股策略</label>
+                                <select class="form-select" id="strategy">
+                                    <option value="smart" selected>智能选股（市场适应性）</option>
+                                    <option value="enhanced">增强选股（放量回调+涨停逻辑）</option>
+                                    <option value="select">传统选股（基础策略）</option>
+                                </select>
+                                <div class="form-text">
+                                    <small id="strategyDescription">
+                                        智能选股：根据市场环境自动调整策略，适应性强
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="preset" class="form-label">风险偏好</label>
+                                <select class="form-select" id="preset">
+                                    <option value="conservative">保守型</option>
+                                    <option value="balanced" selected>平衡型</option>
+                                    <option value="aggressive">激进型</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="limit" class="form-label">选择数量</label>
+                                <input type="number" class="form-control" id="limit" value="20" min="1" max="100">
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="verbose">
+                                <label class="form-check-label" for="verbose">详细输出</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <span class="loading spinner-border spinner-border-sm" role="status"></span>
+                                <i class="bi bi-play"></i> 开始选股
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 定时任务 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-clock"></i> 定时任务
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">任务状态</label>
+                            <div id="schedulerStatus" class="fw-bold"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cronExpression" class="form-label">Cron表达式</label>
+                            <input type="text" class="form-control" id="cronExpression" value="20 14 * * 1-5" placeholder="20 14 * * 1-5">
+                            <div class="form-text">默认：每工作日下午2:20执行</div>
+                        </div>
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" id="toggleSchedulerBtn" class="btn btn-info" onclick="startScheduler()">
+                                <i class="bi bi-play"></i> 启动定时任务
+                            </button>
+                            <button type="button" class="btn btn-info" onclick="getSchedulerLogs()">
+                                <i class="bi bi-journal-text"></i> 日志
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top N 概念股 -->
+                <div class="card mb-4" id="conceptStocksCard">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-bar-chart-line"></i> Top N 概念股</span>
+                        <span class="badge bg-primary" id="conceptStocksCount">0</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="concept-stocks-table">
+                            <table class="table table-sm table-striped" id="conceptStocksTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 15%;">排名</th>
+                                        <th style="width: 35%;">概念</th>
+                                        <th style="width: 25%;">热度</th>
+                                        <th style="width: 25%;">涨幅</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">暂无数据，请先更新数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="form-text mt-2">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> 
+                                数据更新后自动显示热门概念股排行
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧结果展示 -->
+            <div class="col-md-8">
+                <!-- 股票列表 -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-list-ul"></i> 选股结果</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="exportResults()">
+                            <i class="bi bi-download"></i> 导出
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Tab导航 -->
+                        <ul class="nav nav-tabs mb-3" id="stockResultTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="smart-tab" data-bs-toggle="tab" data-bs-target="#smart-pane" type="button" role="tab" aria-controls="smart-pane" aria-selected="true">
+                                    <i class="bi bi-cpu"></i> 智能选股
+                                    <span class="badge bg-secondary ms-1" id="smartCount">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="enhanced-tab" data-bs-toggle="tab" data-bs-target="#enhanced-pane" type="button" role="tab" aria-controls="enhanced-pane" aria-selected="false">
+                                    <i class="bi bi-graph-up-arrow"></i> 增强选股
+                                    <span class="badge bg-secondary ms-1" id="enhancedCount">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="traditional-tab" data-bs-toggle="tab" data-bs-target="#traditional-pane" type="button" role="tab" aria-controls="traditional-pane" aria-selected="false">
+                                    <i class="bi bi-bar-chart"></i> 传统选股
+                                    <span class="badge bg-secondary ms-1" id="traditionalCount">0</span>
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Tab内容 -->
+                        <div class="tab-content" id="stockResultTabContent">
+                            <!-- 智能选股Tab -->
+                            <div class="tab-pane fade show active" id="smart-pane" role="tabpanel" aria-labelledby="smart-tab">
+                                <div class="table-responsive stock-results-table">
+                                    <table class="table table-striped table-hover" id="smartStockTable">
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>概率分数</th>
+                                                <th>风险评级</th>
+                                                <th>建议操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">暂无数据，请执行智能选股操作</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 增强选股Tab -->
+                            <div class="tab-pane fade" id="enhanced-pane" role="tabpanel" aria-labelledby="enhanced-tab">
+                                <div class="table-responsive stock-results-table">
+                                    <table class="table table-striped table-hover" id="enhancedStockTable">
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>概率分数</th>
+                                                <th>风险评级</th>
+                                                <th>建议操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">暂无数据，请执行增强选股操作</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 传统选股Tab -->
+                            <div class="tab-pane fade" id="traditional-pane" role="tabpanel" aria-labelledby="traditional-tab">
+                                <div class="table-responsive stock-results-table">
+                                    <table class="table table-striped table-hover" id="traditionalStockTable">
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>概率分数</th>
+                                                <th>风险评级</th>
+                                                <th>建议操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">暂无数据，请执行传统选股操作</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作日志 -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-terminal"></i> 操作日志</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                            <i class="bi bi-trash"></i> 清空
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="logOutput" class="log-output p-3 border rounded">
+                            系统已就绪，等待操作...\n
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 个人设置模态框 -->
+    <div class="modal fade" id="userSettingsModal" tabindex="-1" aria-labelledby="userSettingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userSettingsModalLabel">
+                        <i class="bi bi-person-circle"></i> 个人设置
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="userSettingsForm">
+                        <div class="mb-3">
+                            <label for="userNickname" class="form-label">用户昵称</label>
+                            <input type="text" class="form-control" id="userNickname" placeholder="输入显示昵称">
+                        </div>
+                        <div class="mb-3">
+                            <label for="currentUsername" class="form-label">用户名</label>
+                            <input type="text" class="form-control" id="currentUsername" readonly>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateUserSettings()">
+                        <i class="bi bi-check-lg"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="changePasswordModalLabel">
+                        <i class="bi bi-key"></i> 修改密码
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm">
+                        <div class="mb-3">
+                            <label for="oldPassword" class="form-label">当前密码</label>
+                            <input type="password" class="form-control" id="oldPassword" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newPassword" class="form-label">新密码</label>
+                            <input type="password" class="form-control" id="newPassword" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">确认新密码</label>
+                            <input type="password" class="form-control" id="confirmPassword" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="changePassword()">
+                        <i class="bi bi-check-lg"></i> 修改密码
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -276,6 +276,12 @@ class TailTradingApp {
                                 setTimeout(() => {
                                     this.loadTopConcepts();
                                 }, 1000); // 延迟1秒确保数据文件生成完成
+                                
+                                // 自动执行三种选股策略
+                                this.addLog('🤖 数据更新完成，开始自动执行三种选股策略...');
+                                setTimeout(() => {
+                                    this.autoExecuteAllStrategies();
+                                }, 2000); // 延迟2秒确保数据更新完全完成
                             } else if (data.type === 'error') {
                                 this.addLog(`❌ ${data.message}`);
                                 clearTimeout(timeoutId);
@@ -412,7 +418,7 @@ class TailTradingApp {
                 <td class="text-center">
                     <span class="badge bg-primary">${concept.heat_score}</span>
                 </td>
-                <td class="text-center ${parseFloat(concept.change_pct) >= 0 ? 'text-success' : 'text-danger'}">
+                <td class="text-center ${parseFloat(concept.change_pct) >= 0 ? 'text-rise' : 'text-fall'}">
                     ${concept.change_pct}
                 </td>
             `;
@@ -458,10 +464,6 @@ class TailTradingApp {
             loading.classList.add('show');
             submitBtn.disabled = true;
 
-            // 强制清空股票表格
-            const tbody = document.querySelector('#stockTable tbody');
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">正在选股中...</td></tr>';
-
             // 根据策略类型显示不同的日志信息
             const strategyNames = {
                 'smart': '智能选股',
@@ -506,7 +508,11 @@ class TailTradingApp {
                 
                 if (data.data && data.data.length > 0) {
                     this.addLog(`准备显示 ${data.data.length} 只股票`);
-                    this.displayStocks(data.data);
+                    // 传递策略参数给displayStocks方法
+                    this.displayStocks(data.data, strategy);
+                    
+                    // 结果已由后端自动保存到对应的策略文件
+                    this.addLog(`💾 ${strategyNames[strategy]}结果已保存到文件`);
                 } else {
                     this.addLog('⚠️ 没有返回股票数据或数据为空');
                     console.log('data字段:', data.data);
@@ -533,10 +539,37 @@ class TailTradingApp {
     // 加载已存在的选股结果
     async loadExistingStockResults() {
         try {
-            const data = await this.apiRequest('/stock/existing-results');
-            if (data.success && data.data && data.data.length > 0) {
-                this.addLog(`发现已存在的选股结果，共 ${data.data.length} 只股票`);
-                this.displayStocks(data.data);
+            // 加载分策略的结果
+            const data = await this.apiRequest('/stock/strategy-results');
+            if (data.success && data.data) {
+                let totalLoaded = 0;
+                
+                // 加载智能选股结果
+                if (data.data.smart && data.data.smart.data.length > 0) {
+                    this.displayStocks(data.data.smart.data, 'smart');
+                    totalLoaded += data.data.smart.count;
+                    this.addLog(`📊 加载智能选股结果: ${data.data.smart.count} 只股票`);
+                }
+                
+                // 加载增强选股结果
+                if (data.data.enhanced && data.data.enhanced.data.length > 0) {
+                    this.displayStocks(data.data.enhanced.data, 'enhanced');
+                    totalLoaded += data.data.enhanced.count;
+                    this.addLog(`📊 加载增强选股结果: ${data.data.enhanced.count} 只股票`);
+                }
+                
+                // 加载传统选股结果
+                if (data.data.select && data.data.select.data.length > 0) {
+                    this.displayStocks(data.data.select.data, 'select');
+                    totalLoaded += data.data.select.count;
+                    this.addLog(`📊 加载传统选股结果: ${data.data.select.count} 只股票`);
+                }
+                
+                if (totalLoaded > 0) {
+                    this.addLog(`✅ 已加载所有策略的历史结果，共 ${totalLoaded} 只股票`);
+                } else {
+                    this.addLog('暂无已保存的策略结果');
+                }
             } else {
                 this.addLog('暂无已存在的选股结果');
             }
@@ -546,18 +579,49 @@ class TailTradingApp {
         }
     }
 
-    // 显示股票结果
-    displayStocks(stocks) {
+    // 显示股票结果 - 支持三个tab
+    displayStocks(stocks, strategy = null) {
         console.log('=== displayStocks 开始执行 ===');
         console.log('displayStocks被调用，股票数据:', stocks);
+        console.log('策略类型:', strategy);
         console.log('stocks类型:', typeof stocks);
         console.log('stocks是否为数组:', Array.isArray(stocks));
         this.addLog(`🔍 开始显示股票数据，共 ${stocks ? stocks.length : 0} 只`);
         
-        const tbody = document.querySelector('#stockTable tbody');
+        // 如果没有指定策略，则根据当前选择的策略来确定
+        if (!strategy) {
+            const strategySelect = document.getElementById('strategy');
+            strategy = strategySelect ? strategySelect.value : 'smart';
+        }
+        
+        // 根据策略选择对应的表格
+        let tableId;
+        let tabId;
+        let countId;
+        
+        switch(strategy) {
+            case 'enhanced':
+                tableId = 'enhancedStockTable';
+                tabId = 'enhanced-tab';
+                countId = 'enhancedCount';
+                break;
+            case 'select':
+                tableId = 'traditionalStockTable';
+                tabId = 'traditional-tab';
+                countId = 'traditionalCount';
+                break;
+            case 'smart':
+            default:
+                tableId = 'smartStockTable';
+                tabId = 'smart-tab';
+                countId = 'smartCount';
+                break;
+        }
+        
+        const tbody = document.querySelector(`#${tableId} tbody`);
         
         // 强制清空之前的内容
-        console.log('清空之前的tbody内容...');
+        console.log(`清空${tableId}的tbody内容...`);
         tbody.innerHTML = '';
         
         // 添加一个短暂延迟确保DOM更新
@@ -568,6 +632,9 @@ class TailTradingApp {
                 console.log('股票数据为空，显示暂无数据消息');
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
                 this.addLog('❌ 股票数据为空，显示暂无数据');
+                // 更新数量徽章
+                const countElement = document.getElementById(countId);
+                if (countElement) countElement.textContent = '0';
                 return;
             }
 
@@ -598,12 +665,75 @@ class TailTradingApp {
                     <td>${typeof risk === 'number' ? risk.toFixed(2) : risk}</td>
                     <td>${action}</td>
                 `;
+                row.setAttribute('data-stock-code', code); // 添加股票代码属性用于重复检查
                 tbody.appendChild(row);
             });
 
-            this.addLog(`✅ 成功显示 ${stocks.length} 只股票的选择结果`);
+            // 更新数量徽章
+            const countElement = document.getElementById(countId);
+            if (countElement) countElement.textContent = stocks.length.toString();
+
+            // 检查重复股票并设置背景色
+            this.checkDuplicateStocks();
+
+            this.addLog(`✅ 成功显示 ${stocks.length} 只股票的${this.getStrategyName(strategy)}结果`);
             console.log('=== displayStocks 执行完成 ===');
         }, 100); // 100ms延迟确保DOM清空
+    }
+
+    // 获取策略名称
+    getStrategyName(strategy) {
+        switch(strategy) {
+            case 'enhanced': return '增强选股';
+            case 'select': return '传统选股';
+            case 'smart': 
+            default: return '智能选股';
+        }
+    }
+
+    // 检查重复股票并设置背景色
+    checkDuplicateStocks() {
+        // 收集所有股票代码
+        const allStocks = new Map(); // code -> array of table elements
+        
+        ['smartStockTable', 'enhancedStockTable', 'traditionalStockTable'].forEach(tableId => {
+            const table = document.getElementById(tableId);
+            if (table) {
+                const rows = table.querySelectorAll('tbody tr[data-stock-code]');
+                rows.forEach(row => {
+                    const code = row.getAttribute('data-stock-code');
+                    if (code && code !== '-') {
+                        if (!allStocks.has(code)) {
+                            allStocks.set(code, []);
+                        }
+                        allStocks.get(code).push({
+                            row: row,
+                            table: tableId
+                        });
+                    }
+                });
+            }
+        });
+
+        // 清除之前的样式
+        document.querySelectorAll('.stock-duplicate-2, .stock-duplicate-3').forEach(row => {
+            row.classList.remove('stock-duplicate-2', 'stock-duplicate-3');
+        });
+
+        // 设置重复股票的背景色
+        allStocks.forEach((tables, code) => {
+            if (tables.length === 2) {
+                // 命中2个tab
+                tables.forEach(item => {
+                    item.row.classList.add('stock-duplicate-2');
+                });
+            } else if (tables.length === 3) {
+                // 命中3个tab
+                tables.forEach(item => {
+                    item.row.classList.add('stock-duplicate-3');
+                });
+            }
+        });
     }
 
     // 生成东方财富股票链接
@@ -659,7 +789,7 @@ class TailTradingApp {
                 // 更新按钮为启动状态
                 if (toggleBtn) {
                     toggleBtn.textContent = '启动定时任务';
-                    toggleBtn.className = 'btn btn-success';
+                    toggleBtn.className = 'btn btn-info';
                     toggleBtn.onclick = () => this.startScheduler();
                 }
                 this.addLog(`🔄 定时任务状态已更新: 已停止`);
@@ -747,36 +877,59 @@ class TailTradingApp {
 
     // 导出结果
     exportResults() {
-        const table = document.getElementById('stockTable');
-        const rows = table.querySelectorAll('tbody tr');
+        // 收集所有tab的股票代码
+        const allStockCodes = [];
+        const tabData = {};
         
-        if (rows.length === 1 && rows[0].textContent.includes('暂无数据')) {
+        const tables = [
+            { id: 'smartStockTable', name: '智能选股' },
+            { id: 'enhancedStockTable', name: '增强选股' },
+            { id: 'traditionalStockTable', name: '传统选股' }
+        ];
+        
+        tables.forEach(tableInfo => {
+            const table = document.getElementById(tableInfo.id);
+            if (table) {
+                const rows = table.querySelectorAll('tbody tr');
+                const codes = [];
+                
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length === 5 && !row.textContent.includes('暂无数据')) {
+                        const codeCell = cells[0];
+                        const code = codeCell.textContent.trim();
+                        if (code && code !== '-') {
+                            codes.push(code);
+                            if (!allStockCodes.includes(code)) {
+                                allStockCodes.push(code);
+                            }
+                        }
+                    }
+                });
+                
+                if (codes.length > 0) {
+                    tabData[tableInfo.name] = codes;
+                }
+            }
+        });
+        
+        if (allStockCodes.length === 0) {
             this.addLog('暂无数据可导出');
             return;
         }
 
-        // 提取股票代码
-        const stockCodes = [];
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length === 5) {
-                // 第一列是股票代码链接，提取文本内容
-                const codeCell = cells[0];
-                const code = codeCell.textContent.trim();
-                if (code && code !== '-') {
-                    stockCodes.push(code);
-                }
-            }
+        // 生成导出内容
+        let exportContent = '';
+        
+        // 添加各个策略的股票代码
+        Object.keys(tabData).forEach(strategyName => {
+            exportContent += `${strategyName}: ${tabData[strategyName].join(',')}\n`;
         });
-
-        if (stockCodes.length === 0) {
-            this.addLog('没有找到有效的股票代码');
-            return;
-        }
-
-        // 生成逗号分隔的股票代码文件
-        const codesText = stockCodes.join(',');
-        const blob = new Blob([codesText], { type: 'text/plain;charset=utf-8;' });
+        
+        exportContent += `\n所有股票代码（去重）: ${allStockCodes.join(',')}\n`;
+        
+        // 创建下载
+        const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         
@@ -785,7 +938,95 @@ class TailTradingApp {
         link.download = `selected_stocks_${today}.txt`;
         link.click();
 
-        this.addLog(`已导出 ${stockCodes.length} 个股票代码: ${codesText}`);
+        this.addLog(`已导出 ${allStockCodes.length} 个股票代码（总计），包含${Object.keys(tabData).length}个策略的结果`);
+    }
+
+    // 自动执行所有选股策略
+    async autoExecuteAllStrategies() {
+        const strategies = [
+            { key: 'smart', name: '智能选股' },
+            { key: 'enhanced', name: '增强选股' },
+            { key: 'select', name: '传统选股' }
+        ];
+
+        // 获取当前设置的参数
+        const preset = document.getElementById('preset').value;
+        const limit = parseInt(document.getElementById('limit').value);
+        const verbose = document.getElementById('verbose').checked;
+
+        this.addLog(`⚙️ 将使用以下参数执行选股: 风险偏好=${preset}, 数量=${limit}, 详细输出=${verbose}`);
+
+        for (const strategy of strategies) {
+            try {
+                this.addLog(`🎯 开始执行${strategy.name}...`);
+                await this.executeStrategy(strategy.key, preset, limit, verbose);
+                this.addLog(`✅ ${strategy.name}完成`);
+                
+                // 在策略之间添加短暂延迟，避免服务器压力过大
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                this.addLog(`❌ ${strategy.name}执行失败: ${error.message}`);
+            }
+        }
+
+        this.addLog('🎊 所有选股策略执行完成！');
+    }
+
+    // 执行单个选股策略
+    async executeStrategy(strategy, preset, limit, verbose) {
+        // 根据策略选择不同的API端点
+        let apiEndpoint;
+        let requestBody;
+
+        switch (strategy) {
+            case 'smart':
+                apiEndpoint = '/stock/smart-select';
+                requestBody = { preset, limit, verbose };
+                break;
+            case 'enhanced':
+                apiEndpoint = '/stock/enhanced-select';
+                requestBody = { preset, limit, verbose };
+                break;
+            case 'select':
+            default:
+                apiEndpoint = '/stock/select';
+                requestBody = { preset, limit, verbose };
+                break;
+        }
+
+        const data = await this.apiRequest(apiEndpoint, {
+            method: 'POST',
+            body: JSON.stringify(requestBody)
+        });
+
+        if (data.success) {
+            if (data.data && data.data.length > 0) {
+                this.addLog(`📊 ${this.getStrategyName(strategy)}返回 ${data.data.length} 只股票`);
+                // 传递策略参数给displayStocks方法，立即显示结果
+                this.displayStocks(data.data, strategy);
+                
+                // 结果已由后端自动保存到对应的策略文件
+                this.addLog(`💾 ${this.getStrategyName(strategy)}结果已保存到文件`);
+            } else {
+                this.addLog(`⚠️ ${this.getStrategyName(strategy)}没有返回股票数据`);
+            }
+            
+            if (data.log) {
+                // 将后端日志以较轻的格式输出
+                const logLines = data.log.split('\n').filter(line => line.trim());
+                if (logLines.length > 0) {
+                    this.addLog(`📋 ${this.getStrategyName(strategy)}详细日志:`);
+                    logLines.slice(0, 3).forEach(line => { // 只显示前3行，避免日志过多
+                        this.addLog(`   ${line.trim()}`);
+                    });
+                    if (logLines.length > 3) {
+                        this.addLog(`   ... (共${logLines.length}行日志)`);
+                    }
+                }
+            }
+        } else {
+            throw new Error(data.message || '未知错误');
+        }
     }
 }
 

@@ -1,10 +1,17 @@
+# Python 环境和缓存
 /.idea/
-/QR.png
 /__pycache__/
 /venv/
 .venv/
 *.pyc
 *.pyo
+*.egg-info/
+dist/
+build/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.tox/
 
 # 日志文件
 /logs/
@@ -33,7 +40,7 @@ validation_report_*.json
 .env
 .env.local
 
-# 输出文件
+# 下载目录的输出文件
 /Users/kevin/Downloads/selected_stocks*.txt
 /Users/kevin/Downloads/stock_analysis_report*.txt
 /Users/kevin/Downloads/up_up_*.txt
@@ -46,6 +53,7 @@ validation_report_*.json
 *.swp
 *.swo
 *~
+/QR.png
 
 # 操作系统文件
 .DS_Store
@@ -62,15 +70,6 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 
-# Python 相关
-*.egg-info/
-dist/
-build/
-.coverage
-.pytest_cache/
-.mypy_cache/
-.tox/
-
 # 数据库文件
 *.db
 *.sqlite
@@ -81,46 +80,49 @@ build/
 *.tar.gz
 *.rar
 
-# 部署和构建文件
+# 部署临时文件
+backend-deploy.tar.gz
+frontend-deploy.tar.gz
 essential-files.tar.gz
 .requirements.hash
 
-# 报告文件
-*.html
-*.pdf
-
-# 文档目录保护
-/docs/temp/
-/docs/drafts/
-/docs/*.tmp.md
-/docs/deployment/
-/docs/reports/
-
-# 脚本目录保护
-/scripts/testing/
-/scripts/development/
-/scripts/maintenance/
-/scripts/deployment/
-
-# 部署相关文档（临时生成）
-*_DEPLOYMENT_*.md
-*_CLEANUP_*.md
-BOT_USER_GUIDE.md
-LOCAL_DEPLOYMENT_UPDATE.md
-PRODUCTION_DEPLOYMENT_SUMMARY.md
-
-# 新增：分析和测试相关临时文件
-concept_heat_explainer_old.py
-concept_heat_explainer_v2.py
-method_comparison.py
-data_check.py
+# 临时测试文件（在scripts目录中的特定文件）
+/scripts/concept_heat_explainer_old.py
+/scripts/concept_heat_explainer_v2.py
+/scripts/method_comparison.py
+/scripts/data_check.py
+/scripts/test_*.py
 test_stream.sh
 test_cache_clear.py
 test_concept_api.py
 test_frontend_server.py
 
-# 新增：部署相关
+# 临时部署脚本
 deploy_production.sh
 deploy_cache_feature.sh
-backend-deploy.tar.gz
-frontend-deploy.tar.gz
+
+# 临时测试HTML文件
+test_strategies.html
+test_stream.html
+
+# 临时文档文件
+*_DEPLOYMENT_*.md
+*_CLEANUP_*.md
+BOT_USER_GUIDE.md
+LOCAL_DEPLOYMENT_UPDATE.md
+PRODUCTION_DEPLOYMENT_SUMMARY.md
+GITIGNORE_CLEANUP_SUMMARY.md
+/docs/CODE_CLEANUP_COMPLETE.md
+/docs/DEPLOYMENT_CLEANUP_REPORT.md
+/docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md
+
+# 目录保护（防止空目录或临时目录被提交）
+/docs/temp/
+/docs/drafts/
+/docs/*.tmp.md
+/docs/deployment/
+/docs/reports/
+/scripts/testing/
+/scripts/development/
+/scripts/maintenance/
+/scripts/deployment/
