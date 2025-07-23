@@ -30,27 +30,134 @@ class EstStockPipeline:
         self.concept_manager = ConceptStockManager()
         self.daily_fetcher = EastmoneyDailyStockFetcher()
         self.minute_fetcher = EastmoneyMinuteStockFetcher()
+        # 添加缓存目录
+        self.cache_dir = DATA_DIR / "cache"
+        self.cache_dir.mkdir(exist_ok=True)
 
     async def get_top_n_concepts(self) -> List[str]:
+        # 检查缓存
+        concepts_cache_path = self.cache_dir / "top_concepts.pkl"
+        if concepts_cache_path.exists():
+            mtime = os.path.getmtime(concepts_cache_path)
+            # 如果缓存文件在30分钟内，直接使用
+            if (datetime.now().timestamp() - mtime) < 1800:  # 30分钟
+                try:
+                    cached_df = est_common.load_df_from_file(str(concepts_cache_path))
+                    if not cached_df.empty and '热度分数' in cached_df.columns:
+                        print(f"使用缓存的概念板块数据，缓存时间: {datetime.fromtimestamp(mtime).strftime('%H:%M:%S')}")
+                        return cached_df.nlargest(self.top_n, "热度分数")["代码"].tolist()
+                except Exception as e:
+                    print(f"读取概念缓存失败: {e}")
+        
         fetcher = EastmoneyConceptStockFetcher()
         df = fetcher.fetch_and_save()
         if df is None:
             raise RuntimeError("未能获取概念板块数据")
-        return df.nlargest(self.top_n, "涨跌幅")["代码"].tolist()
+        
+        # 使用新的4维度评分体系计算热度
+        print("🔥 正在计算概念热度...")
+        df = self.calculate_concept_heat(df)
+        
+        # 保存到缓存
+        try:
+            est_common.save_df_to_file(df, str(concepts_cache_path))
+        except Exception as e:
+            print(f"保存概念缓存失败: {e}")
+        
+        # 显示热度排名前几名
+        top_concepts = df.nlargest(min(5, len(df)), "热度分数")
+        print("📊 热度排名TOP5:")
+        for _, concept in top_concepts.iterrows():
+            print(f"  {concept['名称']:<15} | 涨跌: {concept['涨跌幅']:>6.2f}% | 热度: {concept['热度分数']:>5.1f}分")
+        
+        return df.nlargest(self.top_n, "热度分数")["代码"].tolist()
+    
+    def calculate_concept_heat(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算概念热度分数（4维度评分体系）"""
+        import numpy as np
+        
+        results = []
+        
+        for _, concept in df.iterrows():
+            # 1. 板块涨跌幅得分 (40%)
+            price_change = concept.get('涨跌幅', 0)
+            price_score = np.clip((price_change + 10) * 5, 0, 100)
+            
+            # 2. 主力资金净流入得分 (30%)
+            capital_flow = concept.get('f62', 0) / 100000000  # 转换为亿元
+            capital_score = np.clip(capital_flow * 2 + 50, 0, 100)
+            
+            # 3. 成交活跃度得分 (20%)
+            volume = abs(concept.get('f66', 0)) / 100000000  # 转换为亿元
+            volume_score = np.clip(np.log10(volume + 1) * 20, 0, 100)
+            
+            # 4. 技术指标得分 (10%) - 基于振幅
+            amplitude = abs(concept.get('f78', 0)) / 1000000
+            tech_score = np.clip(amplitude * 5, 0, 100)
+            
+            # 加权计算总热度
+            total_heat = (price_score * 0.4 + capital_score * 0.3 + 
+                          volume_score * 0.2 + tech_score * 0.1)
+            
+            # 热度等级
+            if total_heat >= 80:
+                heat_level = "火热"
+            elif total_heat >= 60:
+                heat_level = "偏热"
+            elif total_heat >= 40:
+                heat_level = "温和"
+            elif total_heat >= 20:
+                heat_level = "偏冷"
+            else:
+                heat_level = "极冷"
+            
+            results.append({
+                '热度分数': round(total_heat, 1),
+                '热度等级': heat_level,
+                '价格得分': round(price_score, 1),
+                '资金得分': round(capital_score, 1),
+                '活跃度得分': round(volume_score, 1),
+                '技术得分': round(tech_score, 1)
+            })
+        
+        # 将热度信息添加到原DataFrame
+        heat_df = pd.DataFrame(results)
+        for col in heat_df.columns:
+            df[col] = heat_df[col]
+        
+        return df
 
     def get_all_members(self, concept_codes: List[str]) -> pd.DataFrame:
-        dfs = [self.concept_manager.get_concept_df(code) for code in concept_codes]
-        dfs = [df for df in dfs if df is not None]
+        print(f"正在获取 {len(concept_codes)} 个概念的成分股...")
+        dfs = []
+        for i, code in enumerate(concept_codes):
+            if i % 5 == 0:  # 每5个概念打印一次进度
+                print(f"进度: {i+1}/{len(concept_codes)}")
+            df = self.concept_manager.get_concept_df(code)
+            if df is not None:
+                dfs.append(df)
+        
         if not dfs:
             return pd.DataFrame()
+        
         all_df = pd.concat(dfs, ignore_index=True)
-        # 过滤掉以 FILTER_WORDS 里任一元素开头的股票
-        # 过滤掉名称或代码以 FILTER_WORDS 中任一元素开头，或最新价>=100 的股票
-        mask = (
-            ~all_df["名称"].str.startswith(tuple(FILTER_WORDS), na=False)
-            & ~all_df["代码"].str.startswith(tuple(FILTER_WORDS), na=False)
-        )
-        return all_df[mask].drop_duplicates(subset=["代码"])
+        print(f"合并前总股票数: {len(all_df)}")
+        
+        # 使用更安全的过滤方式，避免正则表达式错误
+        filtered_df = all_df.copy()
+        
+        # 逐个过滤条件，避免复杂的正则表达式
+        for word in FILTER_WORDS:
+            if word:  # 确保过滤词不为空
+                filtered_df = filtered_df[
+                    ~filtered_df["名称"].str.contains(word, case=False, na=False, regex=False)
+                    & ~filtered_df["代码"].str.contains(word, case=False, na=False, regex=False)
+                ]
+        
+        # 去重
+        filtered_df = filtered_df.drop_duplicates(subset=["代码"])
+        print(f"过滤后股票数: {len(filtered_df)}")
+        return filtered_df
 
     async def run(self) -> pd.DataFrame:
         if not est_common.need_update(MEMBERS_DF_PATH):
@@ -63,16 +170,17 @@ class EstStockPipeline:
 
         # 获取概念板块
         t_start = time.time()
-        self.top_n = 10
+        self.top_n = 10  # 减少概念数量以提高速度
         top_concept_codes = await self.get_top_n_concepts()
         t_end = time.time()
         time_stats["获取概念板块"] = t_end - t_start
         print("Top N 概念板块代码:", top_concept_codes)
 
-        # 更新概念成分
+        # 更新概念成分 - 增加并发数
         t_start = time.time()
+        concurrent_count = min(15, self.top_n)  # 增加并发数
         self.concept_manager.update_all_concepts(
-            top_concept_codes, use_proxy_and_concurrent=min(10, self.top_n)
+            top_concept_codes, use_proxy_and_concurrent=concurrent_count
         )
         t_end = time.time()
         time_stats["更新概念成分"] = t_end - t_start
@@ -84,20 +192,25 @@ class EstStockPipeline:
         t_end = time.time()
         time_stats["过滤并保存成分股"] = t_end - t_start
         print(f"过滤后成分股数量: {len(members_df)}，已保存 members_df 到 {MEMBERS_DF_PATH}")
-        for idx, row in members_df.iterrows():
+        
+        # 只显示前10只股票信息，减少输出时间
+        display_count = min(10, len(members_df))
+        for idx, row in members_df.head(display_count).iterrows():
             print(f"代码: {row['代码']}, 名称: {row['名称']}, 股价: {row['股价']}")
-        # 更新日线数据
+        if len(members_df) > display_count:
+            print(f"... 还有 {len(members_df) - display_count} 只股票")
+
+        # 并行更新日线和分钟线数据
         if not members_df.empty:
             t_start = time.time()
-            await self.update_daily_for_members(members_df)
+            # 创建任务并并行执行
+            daily_task = self.update_daily_for_members(members_df, use_proxy_and_concurrent=25)
+            minute_task = self.update_minute_for_members(members_df, use_proxy_and_concurrent=25)
+            
+            # 并行执行日线和分钟线更新
+            await asyncio.gather(daily_task, minute_task)
             t_end = time.time()
-            time_stats["更新日线数据"] = t_end - t_start
-
-            # 更新分钟线数据
-            t_start = time.time()
-            await self.update_minute_for_members(members_df)
-            t_end = time.time()
-            time_stats["更新分钟线数据"] = t_end - t_start
+            time_stats["并行更新数据"] = t_end - t_start
 
         # 打印代理使用次数
         print(f"代理使用次数: {getattr(est_common, 'PROXY_USE_COUNT', 0)}")
@@ -110,7 +223,7 @@ class EstStockPipeline:
         )
         return members_df
 
-    async def update_daily_for_members(self, members_df: pd.DataFrame, period="day", adjust="qfq", use_proxy_and_concurrent=20):
+    async def update_daily_for_members(self, members_df: pd.DataFrame, period="day", adjust="qfq", use_proxy_and_concurrent=25):
         if members_df is None or members_df.empty:
             print("members_df 为空，跳过日线更新")
             return
@@ -118,20 +231,22 @@ class EstStockPipeline:
             f"1.{code}" if str(code).startswith("6") else f"0.{code}"
             for code in members_df["代码"]
         ]
+        print(f"开始更新 {len(secids)} 只股票的日线数据...")
         self.daily_fetcher.update_all_daily(
             secids, period=period, adjust=adjust, use_proxy_and_concurrent=use_proxy_and_concurrent
         )
-        print(f"已批量更新 {len(secids)} 只股票的日线数据")
+        print(f"✅ 已批量更新 {len(secids)} 只股票的日线数据")
 
-    async def update_minute_for_members(self, members_df: pd.DataFrame, period="1", use_proxy_and_concurrent=20):
+    async def update_minute_for_members(self, members_df: pd.DataFrame, period="1", use_proxy_and_concurrent=25):
         if members_df is None or members_df.empty:
             print("members_df 为空，跳过分钟线更新")
             return
         codes_df = pd.DataFrame({"symbol": members_df["代码"].tolist()})
+        print(f"开始更新 {len(codes_df)} 只股票的分钟数据...")
         self.minute_fetcher.update_minute_batch(
             codes_df, period=period, use_proxy_and_concurrent=use_proxy_and_concurrent
         )
-        print(f"已批量更新 {len(codes_df)} 只股票的分钟数据")
+        print(f"✅ 已批量更新 {len(codes_df)} 只股票的分钟数据")
 
 def load_members_df_from_path() -> pd.DataFrame:
     try:
@@ -141,7 +256,16 @@ def load_members_df_from_path() -> pd.DataFrame:
         return pd.DataFrame()
 
 async def main():
-    pipeline = EstStockPipeline(top_n=20)
+    # 支持快速模式参数
+    import sys
+    fast_mode = '--fast' in sys.argv or '-f' in sys.argv
+    
+    if fast_mode:
+        print("🚀 启用快速模式...")
+        pipeline = EstStockPipeline(top_n=8)  # 减少概念数量
+    else:
+        pipeline = EstStockPipeline(top_n=10)
+    
     await pipeline.run()
 
 if __name__ == "__main__":

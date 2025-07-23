@@ -28,6 +28,7 @@ show_help() {
     echo "  enhanced     增强选股（放量回调+涨停逻辑）"
     echo "  select       传统选股"
     echo "  market       市场强弱分析"
+    echo "  hot          热门概念分析"
     echo "  risk         连涨风险分析"
     echo "  volume       放量回调分析"
     echo "  logic        涨停逻辑分析"
@@ -166,6 +167,14 @@ case "$1" in
             source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/real_market_analyzer.py" "${@:2}"
         else
             python3 "$SCRIPT_DIR/scripts/real_market_analyzer.py" "${@:2}"
+        fi
+        ;;
+    "hot")
+        echo "🔥 热门概念分析..."
+        if [ -d "$SCRIPT_DIR/.venv" ]; then
+            source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/hot_concept_analyzer.py" "${@:2}"
+        else
+            python3 "$SCRIPT_DIR/scripts/hot_concept_analyzer.py" "${@:2}"
         fi
         ;;
     "risk")

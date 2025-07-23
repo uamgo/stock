@@ -108,3 +108,15 @@ essential-files.tar.gz
 BOT_USER_GUIDE.md
 LOCAL_DEPLOYMENT_UPDATE.md
 PRODUCTION_DEPLOYMENT_SUMMARY.md
+
+# 新增：分析和测试相关临时文件
+concept_heat_explainer_old.py
+concept_heat_explainer_v2.py
+method_comparison.py
+data_check.py
+test_stream.sh
+
+# 新增：部署相关
+deploy_production.sh
+backend-deploy.tar.gz
+frontend-deploy.tar.gz
