@@ -82,31 +82,82 @@ case "$1" in
     # 智能选股相关
     "smart")
         echo "🤖 启动智能选股..."
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        OUTPUT_FILE="/Users/kevin/Downloads/smart_selection_${TIMESTAMP}.txt"
+        
         if [ -d "$SCRIPT_DIR/.venv" ]; then
-            source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/smart_select.py" "${@:2}"
+            RESULT=$(source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/smart_select.py" "${@:2}")
         else
-            python3 "$SCRIPT_DIR/scripts/smart_select.py" "${@:2}"
+            RESULT=$(python3 "$SCRIPT_DIR/scripts/smart_select.py" "${@:2}")
+        fi
+        
+        echo "$RESULT"
+        
+        # 提取股票代码并保存到文件
+        STOCK_CODES=$(echo "$RESULT" | grep -o '"代码":\s*"[^"]*"' | grep -o '"[0-9]\{6\}"' | tr -d '"' | tr '\n' ',' | sed 's/,$//')
+        if [ -n "$STOCK_CODES" ]; then
+            echo "$STOCK_CODES" > "$OUTPUT_FILE"
+            echo "💾 智能选股结果已保存到: $OUTPUT_FILE"
+            echo "📋 股票代码: $STOCK_CODES"
+        else
+            echo "⚠️ 未找到股票代码"
         fi
         ;;
     "enhanced")
         echo "🚀 启动增强选股（放量回调+涨停逻辑）..."
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        OUTPUT_FILE="/Users/kevin/Downloads/enhanced_selection_${TIMESTAMP}.txt"
+        
         if [ -d "$SCRIPT_DIR/.venv" ]; then
-            source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/enhanced_stock_selector.py" "${@:2}"
+            RESULT=$(source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/enhanced_select.py" "${@:2}")
         else
-            python3 "$SCRIPT_DIR/scripts/enhanced_stock_selector.py" "${@:2}"
+            RESULT=$(python3 "$SCRIPT_DIR/scripts/enhanced_select.py" "${@:2}")
+        fi
+        
+        echo "$RESULT"
+        
+        # 提取股票代码并保存到文件
+        STOCK_CODES=$(echo "$RESULT" | grep -o '"代码":\s*"[^"]*"' | grep -o '"[0-9]\{6\}"' | tr -d '"' | tr '\n' ',' | sed 's/,$//')
+        if [ -n "$STOCK_CODES" ]; then
+            echo "$STOCK_CODES" > "$OUTPUT_FILE"
+            echo "💾 增强选股结果已保存到: $OUTPUT_FILE"
+            echo "📋 股票代码: $STOCK_CODES"
+        else
+            echo "⚠️ 未找到股票代码"
         fi
         ;;
     "select")
         echo "📊 传统选股..."
-        if [ -f "$SCRIPT_DIR/tail_trading.py" ]; then
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        OUTPUT_FILE="/Users/kevin/Downloads/traditional_selection_${TIMESTAMP}.txt"
+        
+        if [ -f "$SCRIPT_DIR/scripts/traditional_select.py" ]; then
             if [ -d "$SCRIPT_DIR/.venv" ]; then
-                source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/tail_trading.py" select "${@:2}"
+                RESULT=$(source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/scripts/traditional_select.py" "${@:2}")
             else
-                python3 "$SCRIPT_DIR/tail_trading.py" select "${@:2}"
+                RESULT=$(python3 "$SCRIPT_DIR/scripts/traditional_select.py" "${@:2}")
+            fi
+        elif [ -f "$SCRIPT_DIR/tail_trading.py" ]; then
+            if [ -d "$SCRIPT_DIR/.venv" ]; then
+                RESULT=$(source "$SCRIPT_DIR/.venv/bin/activate" && python3 "$SCRIPT_DIR/tail_trading.py" select "${@:2}")
+            else
+                RESULT=$(python3 "$SCRIPT_DIR/tail_trading.py" select "${@:2}")
             fi
         else
             echo "❌ 选股模块未找到"
             exit 1
+        fi
+        
+        echo "$RESULT"
+        
+        # 提取股票代码并保存到文件
+        STOCK_CODES=$(echo "$RESULT" | grep -o '"代码":\s*"[^"]*"' | grep -o '"[0-9]\{6\}"' | tr -d '"' | tr '\n' ',' | sed 's/,$//')
+        if [ -n "$STOCK_CODES" ]; then
+            echo "$STOCK_CODES" > "$OUTPUT_FILE"
+            echo "💾 传统选股结果已保存到: $OUTPUT_FILE"
+            echo "📋 股票代码: $STOCK_CODES"
+        else
+            echo "⚠️ 未找到股票代码"
         fi
         ;;
     "market")
