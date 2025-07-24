@@ -878,15 +878,15 @@ class TailTradingApp {
     // 导出结果
     exportResults() {
         // 收集所有tab的股票代码
-        const allStockCodes = [];
         const tabData = {};
         
         const tables = [
-            { id: 'smartStockTable', name: '智能选股' },
-            { id: 'enhancedStockTable', name: '增强选股' },
-            { id: 'traditionalStockTable', name: '传统选股' }
+            { id: 'smartStockTable', name: '智能选股', filename: 'smart_stocks' },
+            { id: 'enhancedStockTable', name: '增强选股', filename: 'enhanced_stocks' },
+            { id: 'traditionalStockTable', name: '传统选股', filename: 'traditional_stocks' }
         ];
         
+        // 收集每个tab的股票代码
         tables.forEach(tableInfo => {
             const table = document.getElementById(tableInfo.id);
             if (table) {
@@ -900,45 +900,50 @@ class TailTradingApp {
                         const code = codeCell.textContent.trim();
                         if (code && code !== '-') {
                             codes.push(code);
-                            if (!allStockCodes.includes(code)) {
-                                allStockCodes.push(code);
-                            }
                         }
                     }
                 });
                 
                 if (codes.length > 0) {
-                    tabData[tableInfo.name] = codes;
+                    tabData[tableInfo.filename] = {
+                        codes: codes,
+                        name: tableInfo.name
+                    };
                 }
             }
         });
         
-        if (allStockCodes.length === 0) {
+        if (Object.keys(tabData).length === 0) {
             this.addLog('暂无数据可导出');
             return;
         }
 
-        // 生成导出内容
-        let exportContent = '';
-        
-        // 添加各个策略的股票代码
-        Object.keys(tabData).forEach(strategyName => {
-            exportContent += `${strategyName}: ${tabData[strategyName].join(',')}\n`;
-        });
-        
-        exportContent += `\n所有股票代码（去重）: ${allStockCodes.join(',')}\n`;
-        
-        // 创建下载
-        const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        
-        // 使用当前日期作为文件名
+        // 获取当前日期作为文件名的一部分
         const today = new Date().toISOString().split('T')[0];
-        link.download = `selected_stocks_${today}.txt`;
-        link.click();
+        let exportedFiles = 0;
+        
+        // 为每个有数据的tab生成单独的文件
+        Object.keys(tabData).forEach(filename => {
+            const data = tabData[filename];
+            const stockCodes = data.codes.join(',');
+            
+            // 创建文件内容（只包含股票代码，用逗号分隔）
+            const blob = new Blob([stockCodes], { type: 'text/plain;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${filename}_${today}.txt`;
+            
+            // 触发下载
+            link.click();
+            exportedFiles++;
+            
+            // 清理URL对象
+            setTimeout(() => {
+                URL.revokeObjectURL(link.href);
+            }, 100);
+        });
 
-        this.addLog(`已导出 ${allStockCodes.length} 个股票代码（总计），包含${Object.keys(tabData).length}个策略的结果`);
+        this.addLog(`已导出 ${exportedFiles} 个文件，每个文件包含对应策略的股票代码（逗号分隔）`);
     }
 
     // 自动执行所有选股策略

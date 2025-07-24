@@ -1,6 +1,7 @@
 # Python 环境和缓存
 /.idea/
 /__pycache__/
+*/__pycache__/
 /venv/
 .venv/
 *.pyc
@@ -105,9 +106,11 @@ deploy_cache_feature.sh
 test_strategies.html
 test_stream.html
 
-# 临时文档文件
+# 临时文档文件和报告
 *_DEPLOYMENT_*.md
 *_CLEANUP_*.md
+*_IMPROVEMENT_REPORT.md
+*_ENHANCEMENT_SUMMARY.md
 BOT_USER_GUIDE.md
 LOCAL_DEPLOYMENT_UPDATE.md
 PRODUCTION_DEPLOYMENT_SUMMARY.md
@@ -115,6 +118,14 @@ GITIGNORE_CLEANUP_SUMMARY.md
 /docs/CODE_CLEANUP_COMPLETE.md
 /docs/DEPLOYMENT_CLEANUP_REPORT.md
 /docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md
+
+# 临时测试HTML文件
+test_strategies.html
+test_stream.html
+
+# 进程ID文件
+*.pid
+backend.pid
 
 # 目录保护（防止空目录或临时目录被提交）
 /docs/temp/
